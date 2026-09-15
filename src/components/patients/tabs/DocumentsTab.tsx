@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo } from 'react'
 import {
@@ -11,7 +11,7 @@ import {
   FolderOpen,
   FlaskConical,
   FileText,
-  Files,
+  Filter,
 } from 'lucide-react'
 import { Document } from '@/types'
 import { useDocuments } from '@/hooks/useDocuments'
@@ -22,6 +22,9 @@ import { useToast } from '@/hooks/use-toast'
 import { DocumentDialog } from './DocumentDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorBoundary } from '@/components/error/ErrorBoundary'
+import { PageError } from '@/components/error/PageError'
 
 interface DocumentsTabProps {
   patientId: string
@@ -107,6 +110,7 @@ function DocumentCard({
                   onClick={handleConfirm}
                   disabled={deleting}
                   className='h-5 px-1.5 text-[11px]'
+                  autoFocus
                 >
                   Yes
                 </Button>
@@ -128,6 +132,7 @@ function DocumentCard({
                   onClick={onEdit}
                   className='h-7 w-7 text-muted-foreground hover:text-foreground'
                   title='Edit Document'
+                  aria-label='Edit document'
                 >
                   <Edit className='h-3.5 w-3.5' />
                 </Button>
@@ -137,6 +142,7 @@ function DocumentCard({
                   onClick={() => setConfirmingDelete(true)}
                   className='h-7 w-7 text-muted-foreground hover:text-destructive'
                   title='Delete Document'
+                  aria-label='Delete document'
                 >
                   <Trash2 className='h-3.5 w-3.5' />
                 </Button>
@@ -249,166 +255,163 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
     try {
       await deleteDocument(patientId, id)
       toast({
-        title: 'Document removed',
-        description: 'The document record has been deleted.',
+        title: 'Document deleted',
+        description: 'Document deleted',
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error occurred while removing document'
       toast({
         variant: 'destructive',
-        title: 'Failed to delete document',
-        description: err?.message || 'Error occurred while removing document.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     }
   }
 
   return (
-    <div className='space-y-6'>
-      {/* Top Bar Row */}
-      <div className='flex items-center justify-between'>
-        <span className='text-sm font-medium text-muted-foreground'>
-          Documents
-        </span>
-        <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
-          <Plus className='h-4 w-4' />
-          Add Document
-        </Button>
-      </div>
+    <ErrorBoundary
+      fallback={
+        <PageError
+          title="Failed to load Documents"
+          message="Try refreshing the page."
+        />
+      }
+    >
+      <div className='space-y-6'>
+        {/* Top Bar Row */}
+        <div className='flex items-center justify-between'>
+          <span className='text-sm font-medium text-muted-foreground'>
+            Documents
+          </span>
+          <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
+            <Plus className='h-4 w-4' />
+            Add Document
+          </Button>
+        </div>
 
-      {/* Type Filter Pills */}
-      <div className='flex items-center gap-2 overflow-x-auto pb-1'>
-        {/* 'All' pill */}
-        <button
-          onClick={() => setSelectedFilter('all')}
-          className={
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
-            (selectedFilter === 'all'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-muted/80')
-          }
-        >
-          <span>All</span>
-          <span
+        {/* Type Filter Pills */}
+        <div className='flex items-center gap-2 overflow-x-auto pb-1'>
+          {/* 'All' pill */}
+          <button
+            onClick={() => setSelectedFilter('all')}
             className={
-              'rounded-full px-1.5 py-0.2 text-[10px] ' +
+              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
               (selectedFilter === 'all'
-                ? 'bg-primary-foreground/20 text-primary-foreground'
-                : 'bg-background text-foreground')
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80')
             }
           >
-            {counts.all}
-          </span>
-        </button>
-
-        {/* Category pills */}
-        {(Object.keys(DOCUMENT_TYPES) as DocumentTypeKey[]).map((key) => {
-          const config = DOCUMENT_TYPES[key]
-          const isActive = selectedFilter === key
-          const count = counts[key]
-
-          return (
-            <button
-              key={key}
-              onClick={() => setSelectedFilter(key)}
+            <span>All</span>
+            <span
               className={
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ' +
-                (isActive
-                  ? config.bg + ' ' + config.border + ' ' + config.color + ' font-semibold ring-1 ring-primary/30'
-                  : 'bg-muted/60 border-transparent text-muted-foreground hover:bg-muted')
+                'rounded-full px-1.5 py-0.2 text-[10px] ' +
+                (selectedFilter === 'all'
+                  ? 'bg-primary-foreground/20 text-primary-foreground'
+                  : 'bg-background text-foreground')
               }
             >
-              {getDocumentIcon(config.icon, 'h-3.5 w-3.5')}
-              <span>{config.label}</span>
-              <span
+              {counts.all}
+            </span>
+          </button>
+
+          {/* Category pills */}
+          {(Object.keys(DOCUMENT_TYPES) as DocumentTypeKey[]).map((key) => {
+            const config = DOCUMENT_TYPES[key]
+            const isActive = selectedFilter === key
+            const count = counts[key]
+
+            return (
+              <button
+                key={key}
+                onClick={() => setSelectedFilter(key)}
                 className={
-                  'rounded-full px-1.5 py-0.2 text-[10px] ' +
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ' +
                   (isActive
-                    ? 'bg-background/80 ' + config.color
-                    : 'bg-background text-foreground')
+                    ? config.bg + ' ' + config.border + ' ' + config.color + ' font-semibold ring-1 ring-primary/30'
+                    : 'bg-muted/60 border-transparent text-muted-foreground hover:bg-muted')
                 }
               >
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {error && (
-        <div className='rounded-md border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive'>
-          {error}
+                {getDocumentIcon(config.icon, 'h-3.5 w-3.5')}
+                <span>{config.label}</span>
+                <span
+                  className={
+                    'rounded-full px-1.5 py-0.2 text-[10px] ' +
+                    (isActive
+                      ? 'bg-background/80 ' + config.color
+                      : 'bg-background text-foreground')
+                  }
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
-      )}
 
-      {/* 2-Column Responsive Grid */}
-      <div>
-        {loading ? (
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className='rounded-lg border bg-card p-5 space-y-3.5 shadow-sm'
-              >
-                <div className='flex justify-between items-center'>
-                  <Skeleton className='h-5 w-24 rounded-full' />
-                  <div className='flex gap-1'>
-                    <Skeleton className='h-7 w-7 rounded-md' />
-                    <Skeleton className='h-7 w-7 rounded-md' />
-                  </div>
-                </div>
-                <Skeleton className='h-6 w-48' />
-                <Skeleton className='h-12 w-full rounded' />
-                <Skeleton className='h-4 w-32' />
-              </div>
-            ))}
-          </div>
-        ) : documents.length === 0 ? (
-          <div className='flex flex-col items-center justify-center rounded-lg border border-dashed bg-card p-10 text-center'>
-            <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3 text-muted-foreground'>
-              <Files className='h-6 w-6' />
-            </div>
-            <p className='text-sm font-medium text-foreground'>
-              No documents recorded
-            </p>
-            <p className='text-xs text-muted-foreground mt-1'>
-              Catalog clinical, administrative, billing, or diagnostic documents.
-            </p>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={handleOpenAdd}
-              className='mt-4 gap-1.5'
-            >
-              <Plus className='h-3.5 w-3.5' />
-              Add Document
-            </Button>
-          </div>
-        ) : filteredDocuments.length === 0 ? (
-          <div className='flex flex-col items-center justify-center rounded-lg border border-dashed bg-card p-8 text-center'>
-            <p className='text-sm text-muted-foreground'>
-              No {DOCUMENT_TYPES[selectedFilter as DocumentTypeKey]?.label || selectedFilter} documents found
-            </p>
-          </div>
-        ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            {filteredDocuments.map((doc) => (
-              <DocumentCard
-                key={doc.id}
-                doc={doc}
-                onEdit={() => handleOpenEdit(doc)}
-                onDelete={handleDelete}
-              />
-            ))}
+        {error && (
+          <div className='rounded-md border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive'>
+            {error}
           </div>
         )}
-      </div>
 
-      {/* Add / Edit Dialog */}
-      <DocumentDialog
-        patientId={patientId}
-        document={selectedDoc}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-    </div>
+        {/* 2-Column Responsive Grid */}
+        <div className="min-h-[260px]">
+          {loading ? (
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className='rounded-lg border bg-card p-5 space-y-3.5 shadow-sm'
+                >
+                  <div className='flex justify-between items-center'>
+                    <Skeleton className='h-5 w-24 rounded-full' />
+                    <div className='flex gap-1'>
+                      <Skeleton className='h-7 w-7 rounded-md' />
+                      <Skeleton className='h-7 w-7 rounded-md' />
+                    </div>
+                  </div>
+                  <Skeleton className='h-6 w-48' />
+                  <Skeleton className='h-12 w-full rounded' />
+                  <Skeleton className='h-4 w-32' />
+                </div>
+              ))}
+            </div>
+          ) : documents.length === 0 ? (
+            <EmptyState
+              icon={FolderOpen}
+              title='No documents recorded'
+              action={{
+                label: 'Add Document',
+                onClick: handleOpenAdd,
+              }}
+            />
+          ) : filteredDocuments.length === 0 ? (
+            <EmptyState
+              icon={Filter}
+              title={`No ${DOCUMENT_TYPES[selectedFilter as DocumentTypeKey]?.label || selectedFilter} documents found`}
+            />
+          ) : (
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {filteredDocuments.map((doc) => (
+                <DocumentCard
+                  key={doc.id}
+                  doc={doc}
+                  onEdit={() => handleOpenEdit(doc)}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add / Edit Dialog */}
+        <DocumentDialog
+          patientId={patientId}
+          document={selectedDoc}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      </div>
+    </ErrorBoundary>
   )
 }

@@ -1,7 +1,162 @@
-﻿{
-  /* Tighten per-node rules in production before go-live. */
+{
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    ".read": false,
+    ".write": false,
+
+    "patients": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$patientId": {
+        ".validate": "newData.hasChildren(['firstName', 'lastName', 'dob', 'gender', 'phone', 'email', 'status', 'createdAt', 'updatedAt'])",
+        "firstName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "lastName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "dob": { ".validate": "newData.isString() && newData.val().length > 0" },
+        "gender": { ".validate": "newData.val() === 'Male' || newData.val() === 'Female' || newData.val() === 'Other' || newData.val() === 'Unknown'" },
+        "phone": { ".validate": "newData.isString()" },
+        "email": { ".validate": "newData.isString() && newData.val().matches(/^[^@]+@[^@]+\\.[^@]+$/)" },
+        "status": { ".validate": "newData.val() === 'Active' || newData.val() === 'Inactive' || newData.val() === 'Deceased'" },
+        "createdAt": { ".validate": "newData.isString()" },
+        "updatedAt": { ".validate": "newData.isString()" }
+      }
+    },
+
+    "providers": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$providerId": {
+        ".validate": "newData.hasChildren(['name', 'email', 'phone', 'specialty', 'npi', 'status', 'createdAt', 'updatedAt'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "email": { ".validate": "newData.isString() && newData.val().matches(/^[^@]+@[^@]+\\.[^@]+$/)" },
+        "phone": { ".validate": "newData.isString()" },
+        "specialty": { ".validate": "newData.isString() && newData.val().length > 0" },
+        "npi": { ".validate": "newData.isString() && newData.val().length === 10" },
+        "status": { ".validate": "newData.val() === 'Active' || newData.val() === 'Inactive'" },
+        "createdAt": { ".validate": "newData.isString()" },
+        "updatedAt": { ".validate": "newData.isString()" }
+      }
+    },
+
+    "facilities": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$facilityId": {
+        ".validate": "newData.hasChildren(['name', 'type', 'address', 'city', 'state', 'zip', 'phone', 'status', 'createdAt', 'updatedAt'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 150" },
+        "type": { ".validate": "newData.val() === 'Hospital' || newData.val() === 'Clinic' || newData.val() === 'Urgent Care' || newData.val() === 'Lab' || newData.val() === 'Pharmacy' || newData.val() === 'Imaging Center'" },
+        "address": { ".validate": "newData.isString()" },
+        "city": { ".validate": "newData.isString()" },
+        "state": { ".validate": "newData.isString() && newData.val().length === 2" },
+        "zip": { ".validate": "newData.isString()" },
+        "phone": { ".validate": "newData.isString()" },
+        "status": { ".validate": "newData.val() === 'Active' || newData.val() === 'Inactive'" },
+        "createdAt": { ".validate": "newData.isString()" },
+        "updatedAt": { ".validate": "newData.isString()" }
+      }
+    },
+
+    "appointments": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$appointmentId": {
+        ".validate": "newData.hasChildren(['patientId', 'providerId', 'facilityId', 'scheduledDate', 'scheduledTime', 'durationMinutes', 'reason', 'type', 'status', 'createdAt', 'updatedAt'])",
+        "patientId": { ".validate": "newData.isString()" },
+        "providerId": { ".validate": "newData.isString()" },
+        "facilityId": { ".validate": "newData.isString()" },
+        "scheduledDate": { ".validate": "newData.isString()" },
+        "scheduledTime": { ".validate": "newData.isString()" },
+        "durationMinutes": { ".validate": "newData.isNumber() && newData.val() > 0" },
+        "reason": { ".validate": "newData.isString()" },
+        "type": { ".validate": "newData.val() === 'In-Person' || newData.val() === 'Telehealth' || newData.val() === 'Follow-Up' || newData.val() === 'Consultation'" },
+        "status": { ".validate": "newData.val() === 'Scheduled' || newData.val() === 'Confirmed' || newData.val() === 'In-Progress' || newData.val() === 'Completed' || newData.val() === 'Cancelled' || newData.val() === 'No-Show'" },
+        "createdAt": { ".validate": "newData.isString()" },
+        "updatedAt": { ".validate": "newData.isString()" }
+      }
+    },
+
+    "adtEvents": {
+      "$patientId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$eventId": {
+          ".validate": "newData.hasChildren(['type', 'timestamp', 'facilityId', 'details', 'createdAt'])",
+          "type": { ".validate": "newData.val() === 'Admission' || newData.val() === 'Discharge' || newData.val() === 'Transfer'" },
+          "timestamp": { ".validate": "newData.isString()" },
+          "facilityId": { ".validate": "newData.isString()" },
+          "details": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+
+    "labResults": {
+      "$patientId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$resultId": {
+          ".validate": "newData.hasChildren(['panelName', 'testName', 'value', 'unit', 'status', 'orderedDate', 'createdAt'])",
+          "panelName": { ".validate": "newData.isString()" },
+          "testName": { ".validate": "newData.isString()" },
+          "value": { ".validate": "newData.isString()" },
+          "unit": { ".validate": "newData.isString()" },
+          "status": { ".validate": "newData.val() === 'Normal' || newData.val() === 'Abnormal' || newData.val() === 'Critical' || newData.val() === 'Pending'" },
+          "orderedDate": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+
+    "prescriptions": {
+      "$patientId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$rxId": {
+          ".validate": "newData.hasChildren(['medication', 'dosage', 'route', 'frequency', 'status', 'prescribedDate', 'createdAt'])",
+          "medication": { ".validate": "newData.isString()" },
+          "dosage": { ".validate": "newData.isString()" },
+          "route": { ".validate": "newData.isString()" },
+          "frequency": { ".validate": "newData.isString()" },
+          "status": { ".validate": "newData.val() === 'Active' || newData.val() === 'Discontinued' || newData.val() === 'Completed' || newData.val() === 'On Hold'" },
+          "prescribedDate": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+
+    "documents": {
+      "$patientId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$docId": {
+          ".validate": "newData.hasChildren(['title', 'type', 'fileUrl', 'createdAt', 'updatedAt'])",
+          "title": { ".validate": "newData.isString() && newData.val().length > 0" },
+          "type": { ".validate": "newData.val() === 'Clinical Note' || newData.val() === 'Discharge Summary' || newData.val() === 'Lab Report' || newData.val() === 'Imaging' || newData.val() === 'Consent Form' || newData.val() === 'Other'" },
+          "fileUrl": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isString()" },
+          "updatedAt": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+
+    "encounters": {
+      "$patientId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$encounterId": {
+          ".validate": "newData.hasChildren(['encounterDate', 'encounterType', 'chiefComplaint', 'visitSummary', 'status', 'createdAt', 'updatedAt'])",
+          "encounterDate": { ".validate": "newData.isString()" },
+          "encounterType": { ".validate": "newData.val() === 'Inpatient' || newData.val() === 'Outpatient' || newData.val() === 'Emergency' || newData.val() === 'Telehealth'" },
+          "chiefComplaint": { ".validate": "newData.isString()" },
+          "visitSummary": { ".validate": "newData.isString()" },
+          "status": { ".validate": "newData.val() === 'Open' || newData.val() === 'Closed'" },
+          "createdAt": { ".validate": "newData.isString()" },
+          "updatedAt": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
   }
 }

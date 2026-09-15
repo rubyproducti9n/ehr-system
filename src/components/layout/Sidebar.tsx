@@ -1,5 +1,6 @@
-﻿"use client"
+"use client"
 
+import React, { useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -14,6 +15,7 @@ import {
 import { useAppStore } from "@/store/useAppStore"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
@@ -24,23 +26,35 @@ const NAV_ITEMS = [
   { label: "Facilities", href: "/facilities", icon: Building2 },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean
+  onMobileOpenChange?: (open: boolean) => void
+}
+
+export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const currentUser = useAppStore((state) => state.currentUser)
   const { signOut } = useAuth()
 
+  // Close mobile drawer on route change
+  useEffect(() => {
+    if (onMobileOpenChange) {
+      onMobileOpenChange(false)
+    }
+  }, [pathname, onMobileOpenChange])
+
   const handleSignOut = async () => {
     try {
       await signOut()
       router.push("/login")
-    } catch (err) {
-      console.error("Sign out error:", err)
+    } catch {
+      // Handled in auth hook
     }
   }
 
-  return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-[240px] flex-col border-r bg-card">
+  const content = (
+    <div className="flex h-full flex-col bg-card">
       {/* App Header / Brand */}
       <div className="flex h-14 items-center gap-2 border-b px-6">
         <Activity className="h-5 w-5 text-primary" />
@@ -92,12 +106,29 @@ export function Sidebar() {
             size="icon"
             onClick={handleSignOut}
             title="Sign out"
+            aria-label="Sign out"
             className="h-8 w-8 text-muted-foreground hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </div>
-    </aside>
+    </div>
+  )
+
+  return (
+    <>
+      {/* Desktop Sidebar (lg and above) */}
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[240px] flex-col border-r bg-card lg:flex">
+        {content}
+      </aside>
+
+      {/* Mobile Drawer Sidebar (below lg) */}
+      <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent side="left" className="p-0 w-[240px]">
+          {content}
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

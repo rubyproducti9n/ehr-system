@@ -1,7 +1,7 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo } from 'react'
-import { Plus, Edit, Trash2, Pill, MoreHorizontal } from 'lucide-react'
+import { Plus, Edit, Trash2, Pill, MoreHorizontal, Filter } from 'lucide-react'
 import { Prescription } from '@/types'
 import { usePrescriptions } from '@/hooks/usePrescriptions'
 import { useProviders } from '@/hooks/useProviders'
@@ -31,6 +31,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorBoundary } from '@/components/error/ErrorBoundary'
+import { PageError } from '@/components/error/PageError'
 
 interface PrescriptionsTabProps {
   patientId: string
@@ -101,13 +104,14 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
       await updatePrescriptionStatus(patientId, rx.id, status)
       toast({
         title: 'Prescription status updated',
-        description: rx.medicationName + ' is now marked as ' + status + '.',
+        description: `Status updated to ${status}`,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update prescription status'
       toast({
         variant: 'destructive',
-        title: 'Status update failed',
-        description: err?.message || 'Failed to update prescription status.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     }
   }
@@ -117,15 +121,16 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
     try {
       await deletePrescription(patientId, id)
       toast({
-        title: 'Prescription removed',
-        description: 'The medication entry has been removed.',
+        title: 'Prescription deleted',
+        description: 'Prescription deleted',
       })
       setDeletingId(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error occurred while removing prescription'
       toast({
         variant: 'destructive',
-        title: 'Delete failed',
-        description: err?.message || 'Error occurred while removing prescription.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     } finally {
       setSubmittingDelete(false)
@@ -135,286 +140,297 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
   const isLoading = rxLoading || providersLoading
 
   return (
-    <div className='space-y-6'>
-      {/* Top Bar Row */}
-      <div className='flex items-center justify-between'>
-        <span className='text-sm font-medium text-muted-foreground'>
-          Prescriptions
-        </span>
-        <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
-          <Plus className='h-4 w-4' />
-          Add Prescription
-        </Button>
-      </div>
+    <ErrorBoundary
+      fallback={
+        <PageError
+          title="Failed to load Prescriptions"
+          message="Try refreshing the page."
+        />
+      }
+    >
+      <div className='space-y-6'>
+        {/* Top Bar Row */}
+        <div className='flex items-center justify-between'>
+          <span className='text-sm font-medium text-muted-foreground'>
+            Prescriptions
+          </span>
+          <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
+            <Plus className='h-4 w-4' />
+            Add Prescription
+          </Button>
+        </div>
 
-      {/* Status Filter Pills */}
-      <div className='flex items-center gap-2 overflow-x-auto pb-1'>
-        {(['all', 'active', 'completed', 'discontinued'] as const).map((st) => {
-          const isActive = filterStatus === st
-          const label =
-            st === 'all'
-              ? 'All'
-              : st.charAt(0).toUpperCase() + st.slice(1)
-          const count = counts[st]
+        {/* Status Filter Pills */}
+        <div className='flex items-center gap-2 overflow-x-auto pb-1'>
+          {(['all', 'active', 'completed', 'discontinued'] as const).map((st) => {
+            const isActive = filterStatus === st
+            const label =
+              st === 'all'
+                ? 'All'
+                : st.charAt(0).toUpperCase() + st.slice(1)
+            const count = counts[st]
 
-          return (
-            <button
-              key={st}
-              onClick={() => setFilterStatus(st)}
-              className={
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
-                (isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80')
-              }
-            >
-              <span>{label}</span>
-              <span
+            return (
+              <button
+                key={st}
+                onClick={() => setFilterStatus(st)}
                 className={
-                  'rounded-full px-1.5 py-0.2 text-[10px] ' +
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
                   (isActive
-                    ? 'bg-primary-foreground/20 text-primary-foreground'
-                    : 'bg-background text-foreground')
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80')
                 }
               >
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {error && (
-        <div className='rounded-md border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive'>
-          {error}
+                <span>{label}</span>
+                <span
+                  className={
+                    'rounded-full px-1.5 py-0.2 text-[10px] ' +
+                    (isActive
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-background text-foreground')
+                  }
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
-      )}
 
-      {/* Table */}
-      <div className='rounded-md border bg-card'>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='font-semibold'>Medication</TableHead>
-              <TableHead className='font-semibold'>Dosage</TableHead>
-              <TableHead className='font-semibold'>Frequency</TableHead>
-              <TableHead className='font-semibold'>Route</TableHead>
-              <TableHead className='font-semibold'>Prescribed</TableHead>
-              <TableHead className='font-semibold'>Doctor</TableHead>
-              <TableHead className='font-semibold'>Status</TableHead>
-              <TableHead className='text-right font-semibold'>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Skeleton className='h-5 w-32' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-16' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-20' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-14' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-24' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-28' />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className='h-5 w-16' />
-                  </TableCell>
-                  <TableCell className='text-right'>
-                    <div className='flex justify-end gap-1'>
-                      <Skeleton className='h-8 w-8 rounded-md' />
-                      <Skeleton className='h-8 w-8 rounded-md' />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : prescriptions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className='h-64 text-center'>
-                  <div className='flex flex-col items-center justify-center space-y-3 py-6'>
-                    <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground'>
-                      <Pill className='h-6 w-6' />
-                    </div>
-                    <p className='text-sm font-medium text-foreground'>
-                      No prescriptions recorded
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      Add patient medication regimens, dosages, and administration schedules.
-                    </p>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleOpenAdd}
-                      className='mt-2 gap-1.5'
-                    >
-                      <Plus className='h-3.5 w-3.5' />
-                      Add Prescription
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : filteredList.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className='h-40 text-center'>
-                  <p className='text-sm text-muted-foreground'>
-                    No {filterStatus} prescriptions
-                  </p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredList.map((rx) => {
-                const doctorName = rx.prescribingDoctorId
-                  ? providerMap.get(rx.prescribingDoctorId) || '—'
-                  : '—'
-                const isConfirming = deletingId === rx.id
+        {error && (
+          <div className='rounded-md border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive'>
+            {error}
+          </div>
+        )}
 
-                return (
-                  <TableRow key={rx.id}>
-                    <TableCell className='font-semibold text-foreground'>
-                      {rx.medicationName}
-                    </TableCell>
-                    <TableCell>{rx.dosage}</TableCell>
-                    <TableCell>{rx.frequency}</TableCell>
-                    <TableCell>{rx.route}</TableCell>
-                    <TableCell className='text-muted-foreground text-xs'>
-                      {formatDate(rx.prescribedDate)}
-                    </TableCell>
-                    <TableCell className='text-muted-foreground text-xs'>
-                      {doctorName}
+        {/* Table Container */}
+        <div className='overflow-x-auto rounded-md border bg-card'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className='font-semibold'>Medication</TableHead>
+                <TableHead className='font-semibold'>Dosage</TableHead>
+                <TableHead className='font-semibold'>Frequency</TableHead>
+                <TableHead className='font-semibold'>Route</TableHead>
+                <TableHead className='font-semibold'>Prescribed</TableHead>
+                <TableHead className='font-semibold'>Doctor</TableHead>
+                <TableHead className='font-semibold'>Status</TableHead>
+                <TableHead className='text-right font-semibold'>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className='h-5 w-32' />
                     </TableCell>
                     <TableCell>
-                      {rx.status === 'active' && (
-                        <Badge className='bg-emerald-500 hover:bg-emerald-600 text-white border-none'>
-                          Active
-                        </Badge>
-                      )}
-                      {rx.status === 'completed' && (
-                        <Badge className='bg-slate-500 hover:bg-slate-600 text-white border-none'>
-                          Completed
-                        </Badge>
-                      )}
-                      {rx.status === 'discontinued' && (
-                        <Badge className='bg-rose-500 hover:bg-rose-600 text-white border-none'>
-                          Discontinued
-                        </Badge>
-                      )}
+                      <Skeleton className='h-5 w-16' />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className='h-5 w-20' />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className='h-5 w-14' />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className='h-5 w-24' />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className='h-5 w-28' />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className='h-5 w-16' />
                     </TableCell>
                     <TableCell className='text-right'>
-                      {isConfirming ? (
-                        <div className='flex items-center justify-end gap-1'>
-                          <Button
-                            size='sm'
-                            variant='destructive'
-                            onClick={() => handleConfirmDelete(rx.id)}
-                            disabled={submittingDelete}
-                            className='h-7 px-2 text-xs'
-                          >
-                            Confirm
-                          </Button>
-                          <Button
-                            size='sm'
-                            variant='outline'
-                            onClick={() => setDeletingId(null)}
-                            disabled={submittingDelete}
-                            className='h-7 px-2 text-xs'
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className='flex items-center justify-end gap-1'>
-                          {/* Status Dropdown */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant='ghost'
-                                size='icon'
-                                className='h-8 w-8 text-muted-foreground hover:text-foreground'
-                                title='Update status'
-                              >
-                                <MoreHorizontal className='h-4 w-4' />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align='end'>
-                              <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                disabled={rx.status === 'active'}
-                                onClick={() =>
-                                  handleStatusChange(rx, 'active')
-                                }
-                                className='cursor-pointer'
-                              >
-                                Set Active
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={rx.status === 'completed'}
-                                onClick={() =>
-                                  handleStatusChange(rx, 'completed')
-                                }
-                                className='cursor-pointer'
-                              >
-                                Set Completed
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={rx.status === 'discontinued'}
-                                onClick={() =>
-                                  handleStatusChange(rx, 'discontinued')
-                                }
-                                className='cursor-pointer'
-                              >
-                                Set Discontinued
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-
-                          <Button
-                            variant='ghost'
-                            size='icon'
-                            onClick={() => handleOpenEdit(rx)}
-                            className='h-8 w-8 text-muted-foreground hover:text-foreground'
-                            title='Edit Prescription'
-                          >
-                            <Edit className='h-4 w-4' />
-                          </Button>
-
-                          <Button
-                            variant='ghost'
-                            size='icon'
-                            onClick={() => setDeletingId(rx.id)}
-                            className='h-8 w-8 text-muted-foreground hover:text-destructive'
-                            title='Delete Prescription'
-                          >
-                            <Trash2 className='h-4 w-4' />
-                          </Button>
-                        </div>
-                      )}
+                      <div className='flex justify-end gap-1'>
+                        <Skeleton className='h-8 w-8 rounded-md' />
+                        <Skeleton className='h-8 w-8 rounded-md' />
+                      </div>
                     </TableCell>
                   </TableRow>
-                )
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                ))
+              ) : prescriptions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className='p-0 border-none'>
+                    <EmptyState
+                      icon={Pill}
+                      title='No prescriptions recorded'
+                      action={{
+                        label: 'Add Prescription',
+                        onClick: handleOpenAdd,
+                      }}
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : filteredList.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className='p-0 border-none'>
+                    <EmptyState
+                      icon={Filter}
+                      title={`No ${filterStatus} prescriptions`}
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredList.map((rx) => {
+                  const doctorName = rx.prescribingDoctorId
+                    ? providerMap.get(rx.prescribingDoctorId) || '—'
+                    : '—'
+                  const isConfirming = deletingId === rx.id
 
-      {/* Add / Edit Dialog */}
-      <PrescriptionDialog
-        patientId={patientId}
-        prescription={selectedRx}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-    </div>
+                  return (
+                    <TableRow key={rx.id}>
+                      <TableCell className='font-semibold text-foreground'>
+                        {rx.medicationName}
+                      </TableCell>
+                      <TableCell>{rx.dosage}</TableCell>
+                      <TableCell>{rx.frequency}</TableCell>
+                      <TableCell>{rx.route}</TableCell>
+                      <TableCell className='text-muted-foreground text-xs'>
+                        {formatDate(rx.prescribedDate)}
+                      </TableCell>
+                      <TableCell className='text-muted-foreground text-xs'>
+                        {doctorName}
+                      </TableCell>
+                      <TableCell>
+                        {rx.status === 'active' && (
+                          <Badge
+                            className='bg-emerald-500 hover:bg-emerald-600 text-white border-none'
+                            aria-label='Status: Active'
+                          >
+                            Active
+                          </Badge>
+                        )}
+                        {rx.status === 'completed' && (
+                          <Badge
+                            className='bg-slate-500 hover:bg-slate-600 text-white border-none'
+                            aria-label='Status: Completed'
+                          >
+                            Completed
+                          </Badge>
+                        )}
+                        {rx.status === 'discontinued' && (
+                          <Badge
+                            className='bg-rose-500 hover:bg-rose-600 text-white border-none'
+                            aria-label='Status: Discontinued'
+                          >
+                            Discontinued
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        {isConfirming ? (
+                          <div className='flex items-center justify-end gap-1'>
+                            <Button
+                              size='sm'
+                              variant='destructive'
+                              onClick={() => handleConfirmDelete(rx.id)}
+                              disabled={submittingDelete}
+                              className='h-7 px-2 text-xs'
+                              autoFocus
+                            >
+                              Confirm
+                            </Button>
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              onClick={() => setDeletingId(null)}
+                              disabled={submittingDelete}
+                              className='h-7 px-2 text-xs'
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className='flex items-center justify-end gap-1'>
+                            {/* Status Dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant='ghost'
+                                  size='icon'
+                                  className='h-8 w-8 text-muted-foreground hover:text-foreground'
+                                  title='Update status'
+                                  aria-label='Update status'
+                                >
+                                  <MoreHorizontal className='h-4 w-4' />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align='end'>
+                                <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={rx.status === 'active'}
+                                  onClick={() =>
+                                    handleStatusChange(rx, 'active')
+                                  }
+                                  className='cursor-pointer'
+                                >
+                                  Set Active
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={rx.status === 'completed'}
+                                  onClick={() =>
+                                    handleStatusChange(rx, 'completed')
+                                  }
+                                  className='cursor-pointer'
+                                >
+                                  Set Completed
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={rx.status === 'discontinued'}
+                                  onClick={() =>
+                                    handleStatusChange(rx, 'discontinued')
+                                  }
+                                  className='cursor-pointer'
+                                >
+                                  Set Discontinued
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            <Button
+                              variant='ghost'
+                              size='icon'
+                              onClick={() => handleOpenEdit(rx)}
+                              className='h-8 w-8 text-muted-foreground hover:text-foreground'
+                              title='Edit Prescription'
+                              aria-label='Edit prescription'
+                            >
+                              <Edit className='h-4 w-4' />
+                            </Button>
+
+                            <Button
+                              variant='ghost'
+                              size='icon'
+                              onClick={() => setDeletingId(rx.id)}
+                              className='h-8 w-8 text-muted-foreground hover:text-destructive'
+                              title='Delete Prescription'
+                              aria-label='Delete prescription'
+                            >
+                              <Trash2 className='h-4 w-4' />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Add / Edit Dialog */}
+        <PrescriptionDialog
+          patientId={patientId}
+          prescription={selectedRx}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      </div>
+    </ErrorBoundary>
   )
 }

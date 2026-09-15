@@ -1,17 +1,19 @@
-﻿"use client"
+"use client"
 
-import * as React from "react"
+import React, { useState } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "@/components/ui/toaster"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
+import { ErrorBoundary } from "@/components/error/ErrorBoundary"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const [queryClient] = React.useState(
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
@@ -26,15 +28,20 @@ export default function DashboardLayout({
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-background">
-        {/* Fixed Left Sidebar (240px) */}
-        <Sidebar />
+        {/* Responsive Sidebar (desktop fixed 240px, mobile Sheet) */}
+        <Sidebar
+          mobileOpen={mobileOpen}
+          onMobileOpenChange={setMobileOpen}
+        />
 
-        {/* Top Header (fixed at top, offset by sidebar) */}
-        <Header />
+        {/* Top Header */}
+        <Header onMenuClick={() => setMobileOpen(true)} />
 
-        {/* Main Content Area: offset 240px from left, 56px from top */}
-        <main className="pl-[240px] pt-14">
-          <div className="p-6">{children}</div>
+        {/* Main Content Area: offset 240px from left on desktop, 56px from top */}
+        <main className="lg:pl-[240px] pt-14">
+          <div className="p-4 sm:p-6">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </div>
         </main>
       </div>
       <Toaster />

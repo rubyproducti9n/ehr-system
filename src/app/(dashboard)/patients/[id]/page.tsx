@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
@@ -8,14 +8,14 @@ import { Patient } from '@/types'
 import { getPatientById, subscribeToPatients } from '@/lib/services/patientService'
 import { DemographicsPanel } from '@/components/patients/DemographicsPanel'
 import { EditPatientSheet } from '@/components/patients/EditPatientSheet'
-import { SubTabPlaceholder } from '@/components/patients/SubTabPlaceholder'
 import { AdtEventsTab } from '@/components/patients/tabs/AdtEventsTab'
 import { LabResultsTab } from '@/components/patients/tabs/LabResultsTab'
 import { PrescriptionsTab } from '@/components/patients/tabs/PrescriptionsTab'
 import { DocumentsTab } from '@/components/patients/tabs/DocumentsTab'
+import { EncounterTab } from '@/components/patients/tabs/EncounterTab'
+import { PageError } from '@/components/error/PageError'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
 
 const VALID_TABS = ['adt', 'lab', 'rx', 'docs', 'encounter'] as const
 type TabKey = typeof VALID_TABS[number]
@@ -53,8 +53,7 @@ export default function PatientProfilePage() {
           setLoading(false)
         }
       })
-      .catch((err) => {
-        console.error('Error fetching patient:', err)
+      .catch(() => {
         if (isMounted) {
           setPatient(null)
           setLoading(false)
@@ -98,7 +97,7 @@ export default function PatientProfilePage() {
         {/* Two-column layout skeleton */}
         <div className='flex flex-col lg:flex-row gap-6 items-start'>
           {/* Left panel skeleton */}
-          <div className='w-[300px] shrink-0 rounded-lg border bg-card p-5 space-y-6'>
+          <div className='w-full lg:w-[300px] shrink-0 rounded-lg border bg-card p-5 space-y-6'>
             <div className='flex flex-col items-center space-y-3'>
               <Skeleton className='h-16 w-16 rounded-full' />
               <Skeleton className='h-6 w-36' />
@@ -146,22 +145,11 @@ export default function PatientProfilePage() {
           <span className='font-semibold text-foreground'>Not Found</span>
         </div>
 
-        {/* Empty State Card */}
-        <div className='flex min-h-[50vh] flex-col items-center justify-center rounded-lg border border-dashed bg-card p-8 text-center'>
-          <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3'>
-            <UserX className='h-6 w-6 text-muted-foreground' />
-          </div>
-          <h2 className='text-lg font-semibold text-foreground'>Patient not found</h2>
-          <p className='text-xs text-muted-foreground mt-1 max-w-sm'>
-            The requested patient profile does not exist or has been removed from the database.
-          </p>
-          <Button asChild variant='outline' size='sm' className='mt-4 gap-2'>
-            <Link href='/patients'>
-              <ArrowLeft className='h-4 w-4' />
-              Back to Patients
-            </Link>
-          </Button>
-        </div>
+        <PageError
+          title='Patient not found'
+          message='This patient record does not exist or has been deleted.'
+          action={{ label: 'Back to Patients', href: '/patients' }}
+        />
       </div>
     )
   }
@@ -213,7 +201,7 @@ export default function PatientProfilePage() {
             </TabsContent>
 
             <TabsContent value='encounter' className='mt-0'>
-              <SubTabPlaceholder label='Encounter' chunk={8} />
+              <EncounterTab patientId={patient.id} />
             </TabsContent>
           </Tabs>
         </div>

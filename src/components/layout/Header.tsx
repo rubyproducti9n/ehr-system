@@ -1,11 +1,13 @@
-﻿"use client"
+"use client"
 
+import React, { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { Bell, Search } from "lucide-react"
+import { Bell, Search, Menu } from "lucide-react"
 import { useAppStore } from "@/store/useAppStore"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { GlobalSearch } from "@/components/search/GlobalSearch"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,11 +25,28 @@ const PAGE_TITLES: Record<string, string> = {
   "/facilities": "Facilities",
 }
 
-export function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void
+}
+
+export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
   const currentUser = useAppStore((state) => state.currentUser)
   const { signOut } = useAuth()
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Keyboard shortcut listener: Cmd+K / Ctrl+K
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setSearchOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [])
 
   // Match title or check prefix
   let pageTitle = PAGE_TITLES[pathname]
@@ -46,8 +65,8 @@ export function Header() {
     try {
       await signOut()
       router.push("/login")
-    } catch (err) {
-      console.error("Sign out error:", err)
+    } catch {
+      // Handled in auth hook
     }
   }
 
@@ -60,35 +79,50 @@ export function Header() {
     .toUpperCase()
 
   return (
-    <header className="fixed left-[240px] right-0 top-0 z-30 flex h-14 items-center justify-between border-b bg-card px-6">
-      {/* Left: Page Title */}
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
+    <header className="fixed left-0 lg:left-[240px] right-0 top-0 z-30 flex h-14 items-center justify-between border-b bg-card px-4 lg:px-6">
+      {/* Left: Hamburger (below lg) + Page Title */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onMenuClick}
+          className="h-9 w-9 text-muted-foreground lg:hidden"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <h1 className="text-base lg:text-lg font-semibold text-foreground truncate max-w-[140px] sm:max-w-none">
+          {pageTitle}
+        </h1>
       </div>
 
       {/* Center: Universal Search Bar */}
-      <div className="flex w-full max-w-md items-center">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            readOnly
-            placeholder="Search patients, providers, facilities..."
-            className="flex h-9 w-full rounded-md border border-input bg-muted/40 pl-9 pr-14 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-          />
-          <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+      <div className="flex w-full max-w-xs sm:max-w-md items-center mx-2 sm:mx-4">
+        <div
+          onClick={() => setSearchOpen(true)}
+          className="relative w-full cursor-pointer group"
+        >
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground group-hover:text-foreground transition-colors" />
+          <div className="flex h-9 w-full select-none items-center rounded-md border border-input bg-muted/40 pl-9 pr-10 sm:pr-14 text-xs sm:text-sm text-muted-foreground group-hover:border-foreground/30 transition-colors truncate">
+            Search patients, providers...
+          </div>
+          <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
             <span className="text-xs">⌘</span>K
           </kbd>
         </div>
       </div>
 
+      {/* Global Command Palette */}
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+
       {/* Right: Notifications & Profile Dropdown */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         <Button
           variant="ghost"
           size="icon"
           className="h-9 w-9 text-muted-foreground"
           title="Notifications (placeholder)"
+          aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
         </Button>
@@ -98,6 +132,7 @@ export function Header() {
             <Button
               variant="ghost"
               className="relative h-8 w-8 rounded-full"
+              aria-label="User profile menu"
             >
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="text-xs font-medium">

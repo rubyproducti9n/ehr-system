@@ -1,11 +1,11 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { Edit, ArrowLeft } from 'lucide-react'
 import { Patient } from '@/types'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
-import { formatDate, calculateAge } from '@/lib/utils'
+import { formatDate, calculateAge, getAvatarColor, getInitials } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -36,20 +36,9 @@ export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
       ? patient.allergies.join(', ')
       : '—'
 
-  // Avatar Initials
-  const nameParts = (patient.name || '').trim().split(/\s+/)
-  const initials =
-    nameParts.length >= 2
-      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-      : (nameParts[0] || 'P').slice(0, 2).toUpperCase()
-
-  // Avatar Color based on gender
-  const avatarColorClass =
-    patient.gender === 'male'
-      ? 'bg-blue-100 text-blue-700 border-blue-200'
-      : patient.gender === 'female'
-      ? 'bg-pink-100 text-pink-700 border-pink-200'
-      : 'bg-slate-100 text-slate-700 border-slate-200'
+  // Avatar Initials & Color
+  const initials = getInitials(patient.name)
+  const avatarColor = getAvatarColor(patient.gender)
 
   return (
     <aside className='w-[300px] shrink-0 rounded-lg border bg-card p-5 flex flex-col justify-between self-start shadow-sm'>
@@ -58,7 +47,7 @@ export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
         <div className='flex flex-col items-center text-center space-y-2.5'>
           {/* Avatar */}
           <div
-            className={'flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold border-2 ' + avatarColorClass}
+            className={`flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-white shadow-sm ${avatarColor}`}
           >
             {initials}
           </div>

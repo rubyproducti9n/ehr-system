@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { Plus, Edit2, Trash2, Building2 } from 'lucide-react'
@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { EmptyState } from '@/components/shared/EmptyState'
 
 export default function FacilitiesPage() {
   const { facilities, loading, error } = useFacilities()
@@ -63,16 +64,17 @@ export default function FacilitiesPage() {
     try {
       await deleteFacility(facilityToDelete.id)
       toast({
-        title: 'Facility removed',
-        description: facilityToDelete.name + ' has been removed.',
+        title: 'Facility deleted',
+        description: 'Facility deleted',
       })
       setDeleteConfirmOpen(false)
       setFacilityToDelete(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error occurred while removing facility'
       toast({
         variant: 'destructive',
-        title: 'Failed to delete facility',
-        description: err?.message || 'Error occurred while removing facility.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     } finally {
       setDeleting(false)
@@ -100,8 +102,8 @@ export default function FacilitiesPage() {
         </div>
       )}
 
-      {/* Facilities Table */}
-      <div className='rounded-md border bg-card'>
+      {/* Facilities Table with horizontal scroll */}
+      <div className='overflow-x-auto rounded-md border bg-card'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -114,7 +116,7 @@ export default function FacilitiesPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              // 5 rows of Skeletons while loading
+              // 5 rows x 4 data + 1 action column skeletons
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
@@ -138,33 +140,20 @@ export default function FacilitiesPage() {
                 </TableRow>
               ))
             ) : facilities.length === 0 ? (
-              // Centered empty state
               <TableRow>
-                <TableCell colSpan={5} className='h-72 text-center'>
-                  <div className='mx-auto flex max-w-sm flex-col items-center justify-center space-y-3'>
-                    <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted'>
-                      <Building2 className='h-6 w-6 text-muted-foreground' />
-                    </div>
-                    <p className='text-base font-medium text-foreground'>
-                      No facilities added yet
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      Get started by adding your clinic, hospital, or care center.
-                    </p>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleOpenAdd}
-                      className='mt-2 gap-1.5'
-                    >
-                      <Plus className='h-3.5 w-3.5' />
-                      Add Facility
-                    </Button>
-                  </div>
+                <TableCell colSpan={5} className='p-0 border-none'>
+                  <EmptyState
+                    icon={Building2}
+                    title='No facilities added'
+                    description='Add your first facility'
+                    action={{
+                      label: 'Add Facility',
+                      onClick: handleOpenAdd,
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              // Live Data Rows
               facilities.map((facility) => (
                 <TableRow key={facility.id}>
                   <TableCell className='font-semibold text-foreground'>
@@ -187,6 +176,7 @@ export default function FacilitiesPage() {
                         onClick={() => handleOpenEdit(facility)}
                         className='h-8 w-8 text-muted-foreground hover:text-foreground'
                         title='Edit facility'
+                        aria-label='Edit facility'
                       >
                         <Edit2 className='h-4 w-4' />
                       </Button>
@@ -196,6 +186,7 @@ export default function FacilitiesPage() {
                         onClick={() => handleOpenDelete(facility)}
                         className='h-8 w-8 text-muted-foreground hover:text-destructive'
                         title='Delete facility'
+                        aria-label='Delete facility'
                       >
                         <Trash2 className='h-4 w-4' />
                       </Button>
@@ -240,6 +231,7 @@ export default function FacilitiesPage() {
               variant='destructive'
               onClick={handleConfirmDelete}
               disabled={deleting}
+              autoFocus
             >
               {deleting ? 'Removing...' : 'Delete'}
             </Button>

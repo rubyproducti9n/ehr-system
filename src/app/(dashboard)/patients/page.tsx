@@ -2,13 +2,12 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
-import { Plus, Search, MoreHorizontal, UserX, AlertTriangle } from 'lucide-react'
+import { Plus, Search, MoreHorizontal, UserX, AlertTriangle, SearchX, Users } from 'lucide-react'
 import { Patient } from '@/types'
 import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { updatePatientStatus, deletePatient } from '@/lib/services/patientService'
-import { useAppStore } from '@/store/useAppStore'
 import { formatDate, calculateAge } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { NewPatientSheet } from '@/components/patients/NewPatientSheet'
@@ -41,13 +40,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/shared/EmptyState'
 
 export default function PatientsPage() {
   const { patients, loading: patientsLoading, error } = usePatients()
   const { providers, loading: providersLoading } = useProviders()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { toast } = useToast()
-  const setSelectedPatientId = useAppStore((state) => state.setSelectedPatientId)
 
   // Filters & Search
   const [selectedStatusTab, setSelectedStatusTab] = useState<string>('all')
@@ -123,13 +122,14 @@ export default function PatientsPage() {
       await updatePatientStatus(patient.id, newStatus)
       toast({
         title: 'Status updated',
-        description: 'Status updated to ' + newStatus,
+        description: `Status updated to ${newStatus}`,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update patient status'
       toast({
         variant: 'destructive',
-        title: 'Status Update Failed',
-        description: err?.message || 'Failed to update patient status.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     }
   }
@@ -149,29 +149,21 @@ export default function PatientsPage() {
       await deletePatient(patientToDelete.id)
       toast({
         title: 'Patient deleted',
-        description: patientToDelete.name + ' has been permanently removed.',
+        description: 'Patient deleted',
       })
       setDeleteConfirmOpen(false)
       setPatientToDelete(null)
       setConfirmNameInput('')
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete patient'
       toast({
         variant: 'destructive',
-        title: 'Delete Failed',
-        description: err?.message || 'Failed to delete patient.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     } finally {
       setDeleting(false)
     }
-  }
-
-  // Patient profile navigation placeholder (Chunk 5)
-  const handlePatientClick = (patient: Patient) => {
-    setSelectedPatientId(patient.id)
-    toast({
-      title: 'Patient Selected',
-      description: 'Patient Profile for ' + patient.name + ' will open in Chunk 5.',
-    })
   }
 
   const isLoading = patientsLoading || providersLoading || facilitiesLoading
@@ -212,6 +204,7 @@ export default function PatientsPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className='pl-9 w-full bg-background'
+          aria-label='Search patients'
         />
       </div>
 
@@ -221,8 +214,8 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* Patient Table */}
-      <div className='rounded-md border bg-card'>
+      {/* Patient Table with Horizontal Scroll */}
+      <div className='overflow-x-auto rounded-md border bg-card'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -238,7 +231,7 @@ export default function PatientsPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              // 6 rows of Skeletons
+              // 6 rows x 7 data + 1 action column skeletons
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
@@ -271,44 +264,30 @@ export default function PatientsPage() {
                 </TableRow>
               ))
             ) : patients.length === 0 ? (
-              // Empty state: no patients registered at all
               <TableRow>
-                <TableCell colSpan={8} className='h-72 text-center'>
-                  <div className='mx-auto flex max-w-sm flex-col items-center justify-center space-y-3'>
-                    <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted'>
-                      <UserX className='h-6 w-6 text-muted-foreground' />
-                    </div>
-                    <p className='text-base font-medium text-foreground'>
-                      No patients registered yet
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      Register your first patient to begin managing electronic health records.
-                    </p>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => setSheetOpen(true)}
-                      className='mt-2 gap-1.5'
-                    >
-                      <Plus className='h-3.5 w-3.5' />
-                      Add your first patient
-                    </Button>
-                  </div>
+                <TableCell colSpan={8} className='p-0 border-none'>
+                  <EmptyState
+                    icon={Users}
+                    title='No patients registered'
+                    description='Add your first patient to get started'
+                    action={{
+                      label: 'Register Patient',
+                      onClick: () => setSheetOpen(true),
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ) : filteredPatients.length === 0 ? (
-              // Empty state: filters/search return no matches
               <TableRow>
-                <TableCell colSpan={8} className='h-48 text-center'>
-                  <div className='flex flex-col items-center justify-center space-y-2 text-muted-foreground'>
-                    <Search className='h-6 w-6' />
-                    <p className='text-sm font-medium'>No patients match your search</p>
-                    <p className='text-xs'>Try adjusting your search query or status filter.</p>
-                  </div>
+                <TableCell colSpan={8} className='p-0 border-none'>
+                  <EmptyState
+                    icon={SearchX}
+                    title='No patients found'
+                    description='Try a different search term'
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              // Data rows
               filteredPatients.map((patient) => {
                 const doctorName = patient.currentDoctorId
                   ? providerMap.get(patient.currentDoctorId) || '—'
@@ -343,17 +322,26 @@ export default function PatientsPage() {
                     {/* Status Badge */}
                     <TableCell>
                       {patient.status === 'active' && (
-                        <Badge className='bg-emerald-500 hover:bg-emerald-600 text-white border-none'>
+                        <Badge
+                          className='bg-emerald-500 hover:bg-emerald-600 text-white border-none'
+                          aria-label='Status: Active'
+                        >
                           Active
                         </Badge>
                       )}
                       {patient.status === 'inactive' && (
-                        <Badge className='bg-amber-500 hover:bg-amber-600 text-white border-none'>
+                        <Badge
+                          className='bg-amber-500 hover:bg-amber-600 text-white border-none'
+                          aria-label='Status: Inactive'
+                        >
                           Inactive
                         </Badge>
                       )}
                       {patient.status === 'discharged' && (
-                        <Badge className='bg-slate-500 hover:bg-slate-600 text-white border-none'>
+                        <Badge
+                          className='bg-slate-500 hover:bg-slate-600 text-white border-none'
+                          aria-label='Status: Discharged'
+                        >
                           Discharged
                         </Badge>
                       )}
@@ -385,6 +373,7 @@ export default function PatientsPage() {
                               size='icon'
                               className='h-8 w-8 text-muted-foreground hover:text-foreground'
                               title='Change Status'
+                              aria-label='Change status'
                             >
                               <MoreHorizontal className='h-4 w-4' />
                             </Button>
@@ -423,6 +412,7 @@ export default function PatientsPage() {
                           onClick={() => handleOpenDelete(patient)}
                           className='h-8 w-8 text-muted-foreground hover:text-destructive'
                           title='Delete Patient'
+                          aria-label='Delete patient'
                         >
                           <UserX className='h-4 w-4' />
                         </Button>
@@ -448,12 +438,12 @@ export default function PatientsPage() {
               <DialogTitle>Confirm Patient Deletion</DialogTitle>
             </div>
             <DialogDescription className='space-y-3 pt-2 text-left'>
-              <p>
+              <span>
                 Deleting a patient removes all their clinical records and historical data permanently.
-              </p>
-              <p className='text-xs font-medium text-foreground bg-muted p-2 rounded-md'>
-                Please type <span className='font-bold underline'>{patientToDelete?.name}</span> below to confirm:
-              </p>
+              </span>
+              <span className='block text-xs font-medium text-foreground bg-muted p-2 rounded-md'>
+                Please type <strong className='underline'>{patientToDelete?.name}</strong> below to confirm:
+              </span>
             </DialogDescription>
           </DialogHeader>
 
@@ -463,6 +453,7 @@ export default function PatientsPage() {
               value={confirmNameInput}
               onChange={(e) => setConfirmNameInput(e.target.value)}
               autoFocus
+              aria-label="Confirm patient name to delete"
             />
           </div>
 
@@ -487,4 +478,3 @@ export default function PatientsPage() {
     </div>
   )
 }
-

@@ -1,7 +1,7 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
-import { Plus, Edit2, Trash2, UserCheck } from 'lucide-react'
+import { Plus, Edit2, Trash2, Stethoscope } from 'lucide-react'
 import { Provider } from '@/types'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { EmptyState } from '@/components/shared/EmptyState'
 
 export default function ProvidersPage() {
   const { providers, loading: providersLoading, error } = useProviders()
@@ -70,16 +71,17 @@ export default function ProvidersPage() {
     try {
       await deleteProvider(providerToDelete.id)
       toast({
-        title: 'Provider removed',
-        description: providerToDelete.name + ' has been removed.',
+        title: 'Provider deleted',
+        description: 'Provider deleted',
       })
       setDeleteConfirmOpen(false)
       setProviderToDelete(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error occurred while removing provider'
       toast({
         variant: 'destructive',
-        title: 'Failed to delete provider',
-        description: err?.message || 'Error occurred while removing provider.',
+        title: 'Error',
+        description: `Error: ${message}`,
       })
     } finally {
       setDeleting(false)
@@ -109,8 +111,8 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Providers Table */}
-      <div className='rounded-md border bg-card'>
+      {/* Providers Table with horizontal scroll */}
+      <div className='overflow-x-auto rounded-md border bg-card'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -124,7 +126,7 @@ export default function ProvidersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              // 5 rows of Skeletons while loading
+              // 5 rows x 5 data + 1 action column skeletons
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
@@ -151,33 +153,20 @@ export default function ProvidersPage() {
                 </TableRow>
               ))
             ) : providers.length === 0 ? (
-              // Centered empty state
               <TableRow>
-                <TableCell colSpan={6} className='h-72 text-center'>
-                  <div className='mx-auto flex max-w-sm flex-col items-center justify-center space-y-3'>
-                    <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted'>
-                      <UserCheck className='h-6 w-6 text-muted-foreground' />
-                    </div>
-                    <p className='text-base font-medium text-foreground'>
-                      No providers added yet
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      Add doctors, nurse practitioners, or specialists to your organization.
-                    </p>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleOpenAdd}
-                      className='mt-2 gap-1.5'
-                    >
-                      <Plus className='h-3.5 w-3.5' />
-                      Add Provider
-                    </Button>
-                  </div>
+                <TableCell colSpan={6} className='p-0 border-none'>
+                  <EmptyState
+                    icon={Stethoscope}
+                    title='No providers added'
+                    description='Add your first provider'
+                    action={{
+                      label: 'Add Provider',
+                      onClick: handleOpenAdd,
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              // Live Data Rows
               providers.map((provider) => {
                 const facilityName =
                   facilityMap.get(provider.facilityId) || 'Unassigned / Unknown'
@@ -206,6 +195,7 @@ export default function ProvidersPage() {
                           onClick={() => handleOpenEdit(provider)}
                           className='h-8 w-8 text-muted-foreground hover:text-foreground'
                           title='Edit provider'
+                          aria-label='Edit provider'
                         >
                           <Edit2 className='h-4 w-4' />
                         </Button>
@@ -215,6 +205,7 @@ export default function ProvidersPage() {
                           onClick={() => handleOpenDelete(provider)}
                           className='h-8 w-8 text-muted-foreground hover:text-destructive'
                           title='Delete provider'
+                          aria-label='Delete provider'
                         >
                           <Trash2 className='h-4 w-4' />
                         </Button>
@@ -260,6 +251,7 @@ export default function ProvidersPage() {
               variant='destructive'
               onClick={handleConfirmDelete}
               disabled={deleting}
+              autoFocus
             >
               {deleting ? 'Removing...' : 'Delete'}
             </Button>

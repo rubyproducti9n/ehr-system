@@ -1,4 +1,4 @@
-﻿import { clsx, type ClassValue } from "clsx"
+import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
@@ -24,4 +24,37 @@ export function calculateAge(dob: string): number {
   const m = today.getMonth() - birth.getMonth()
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
   return age >= 0 ? age : 0
+}
+
+// Format ISO datetime string to "14 Sep 2026, 10:30 AM"
+export function formatDateTime(isoString: string | null): string {
+  if (!isoString) return '—'
+  return new Date(isoString).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+// Returns Tailwind bg class based on gender
+export function getAvatarColor(gender: 'male' | 'female' | 'other' | string): string {
+  switch (gender) {
+    case 'male':
+      return 'bg-blue-500'
+    case 'female':
+      return 'bg-pink-500'
+    default:
+      return 'bg-gray-500'
+  }
+}
+
+// Returns initials from full name (first + last word)
+export function getInitials(name: string): string {
+  if (!name) return 'P'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'P'
+  return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase()
 }
