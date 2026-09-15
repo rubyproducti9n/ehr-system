@@ -1,0 +1,7 @@
+﻿{
+  /* Tighten per-node rules in production before go-live. */
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null"
+  }
+}
