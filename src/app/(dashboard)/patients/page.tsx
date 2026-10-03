@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Plus, Search, MoreHorizontal, UserX, AlertTriangle, SearchX, Users } from 'lucide-react'
 import { Patient } from '@/types'
 import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { updatePatientStatus, deletePatient } from '@/lib/services/patientService'
+import { useAppStore } from '@/store/useAppStore'
 import { formatDate, calculateAge } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { NewPatientSheet } from '@/components/patients/NewPatientSheet'
@@ -42,14 +44,25 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 
-export default function PatientsPage() {
+function PatientsContent() {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { patients, loading: patientsLoading, error } = usePatients()
   const { providers, loading: providersLoading } = useProviders()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { toast } = useToast()
 
+  // Read status param on mount
+  const searchParams = useSearchParams()
+  const statusParam = searchParams.get('status')
+
+  // Use it to set initial tab value
+  const validStatuses = ['active', 'inactive', 'discharged']
+  const initialTab = validStatuses.includes(statusParam ?? '')
+    ? statusParam!
+    : 'all'
+
   // Filters & Search
-  const [selectedStatusTab, setSelectedStatusTab] = useState<string>('all')
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
 
@@ -93,8 +106,8 @@ export default function PatientsPage() {
     })
 
     // 2. Status filter
-    if (selectedStatusTab !== 'all') {
-      result = result.filter((p) => p.status === selectedStatusTab)
+    if (activeTab !== 'all') {
+      result = result.filter((p) => p.status === activeTab)
     }
 
     // 3. Search query filter
@@ -113,13 +126,13 @@ export default function PatientsPage() {
     }
 
     return result
-  }, [patients, selectedStatusTab, debouncedQuery, providerMap, facilityMap])
+  }, [patients, activeTab, debouncedQuery, providerMap, facilityMap])
 
   // Status update handler
   const handleStatusChange = async (patient: Patient, newStatus: Patient['status']) => {
-    if (patient.status === newStatus) return
+    if (patient.status === newStatus || !hospitalId) return
     try {
-      await updatePatientStatus(patient.id, newStatus)
+      await updatePatientStatus(hospitalId, patient.id, newStatus)
       toast({
         title: 'Status updated',
         description: `Status updated to ${newStatus}`,
@@ -143,10 +156,10 @@ export default function PatientsPage() {
 
   // Delete submission
   const handleConfirmDelete = async () => {
-    if (!patientToDelete) return
+    if (!patientToDelete || !hospitalId) return
     setDeleting(true)
     try {
-      await deletePatient(patientToDelete.id)
+      await deletePatient(hospitalId, patientToDelete.id)
       toast({
         title: 'Patient deleted',
         description: 'Patient deleted',
@@ -166,6 +179,7 @@ export default function PatientsPage() {
     }
   }
 
+
   const isLoading = patientsLoading || providersLoading || facilitiesLoading
 
   const isDeleteNameMatched =
@@ -177,8 +191,8 @@ export default function PatientsPage() {
       {/* Top Bar Row: Status Tabs + New Patient Button */}
       <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
         <Tabs
-          value={selectedStatusTab}
-          onValueChange={setSelectedStatusTab}
+          value={activeTab}
+          onValueChange={setActiveTab}
           className='w-full sm:w-auto'
         >
           <TabsList className='grid grid-cols-4 w-full sm:w-auto'>
@@ -200,7 +214,7 @@ export default function PatientsPage() {
         <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
         <Input
           type='text'
-          placeholder='Search by name, doctor, or facility...'
+          placeholder='Search by name, doctor, or hospital...'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className='pl-9 w-full bg-background'
@@ -223,15 +237,16 @@ export default function PatientsPage() {
               <TableHead className='font-semibold'>Gender</TableHead>
               <TableHead className='font-semibold'>Age</TableHead>
               <TableHead className='font-semibold'>Status</TableHead>
+              <TableHead className='font-semibold'>Type</TableHead>
               <TableHead className='font-semibold'>Last Visit</TableHead>
               <TableHead className='font-semibold'>Current Doctor</TableHead>
-              <TableHead className='font-semibold'>Facility</TableHead>
+              <TableHead className='font-semibold'>Hospital</TableHead>
               <TableHead className='text-right font-semibold'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              // 6 rows x 7 data + 1 action column skeletons
+              // 6 rows x 8 data + 1 action column skeletons
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
@@ -242,6 +257,9 @@ export default function PatientsPage() {
                   </TableCell>
                   <TableCell>
                     <Skeleton className='h-5 w-16' />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className='h-5 w-20' />
                   </TableCell>
                   <TableCell>
                     <Skeleton className='h-5 w-20' />
@@ -265,7 +283,7 @@ export default function PatientsPage() {
               ))
             ) : patients.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className='p-0 border-none'>
+                <TableCell colSpan={9} className='p-0 border-none'>
                   <EmptyState
                     icon={Users}
                     title='No patients registered'
@@ -279,7 +297,7 @@ export default function PatientsPage() {
               </TableRow>
             ) : filteredPatients.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className='p-0 border-none'>
+                <TableCell colSpan={9} className='p-0 border-none'>
                   <EmptyState
                     icon={SearchX}
                     title='No patients found'
@@ -347,6 +365,29 @@ export default function PatientsPage() {
                       )}
                     </TableCell>
 
+                    {/* Patient Type */}
+                    <TableCell>
+                      {patient.patientType === 'in-patient' && (
+                        <Badge
+                          className='bg-blue-500 hover:bg-blue-600 text-white border-none'
+                          aria-label='Patient Type: In-Patient'
+                        >
+                          In-Patient
+                        </Badge>
+                      )}
+                      {patient.patientType === 'out-patient' && (
+                        <Badge
+                          className='bg-emerald-600 hover:bg-emerald-700 text-white border-none'
+                          aria-label='Patient Type: Out-Patient'
+                        >
+                          Out-Patient
+                        </Badge>
+                      )}
+                      {!patient.patientType && (
+                        <span className='text-muted-foreground'>—</span>
+                      )}
+                    </TableCell>
+
                     {/* Last Visit */}
                     <TableCell className='text-muted-foreground text-sm'>
                       {formatDate(patient.lastVisitDate)}
@@ -357,7 +398,7 @@ export default function PatientsPage() {
                       {doctorName}
                     </TableCell>
 
-                    {/* Facility */}
+                    {/* Hospital */}
                     <TableCell className='text-muted-foreground'>
                       {facilityName}
                     </TableCell>
@@ -476,5 +517,13 @@ export default function PatientsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function PatientsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PatientsContent />
+    </Suspense>
   )
 }

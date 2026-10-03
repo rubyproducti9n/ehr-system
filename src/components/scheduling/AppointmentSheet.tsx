@@ -8,6 +8,7 @@ import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { createAppointment, updateAppointment } from '@/lib/services/appointmentService'
 import { useToast } from '@/hooks/use-toast'
+import { useAppStore } from '@/store/useAppStore'
 import {
   Sheet,
   SheetContent,
@@ -91,6 +92,13 @@ export function AppointmentSheet({
     }
   }, [open, appointment])
 
+  // Auto-select single facility if only one exists
+  useEffect(() => {
+    if (facilities.length === 1 && !facilityId) {
+      setFacilityId(facilities[0].id)
+    }
+  }, [facilities, facilityId])
+
   // Filtered providers based on selected facility
   const filteredProviders = useMemo(() => {
     if (!facilityId) return providers
@@ -143,7 +151,7 @@ export function AppointmentSheet({
 
     if (!patientId) newErrors.patientId = 'Please select a patient'
     if (!providerId) newErrors.providerId = 'Please select a provider'
-    if (!facilityId) newErrors.facilityId = 'Please select a facility'
+    if (!facilityId) newErrors.facilityId = 'Please select a hospital'
 
     if (!date) {
       newErrors.date = 'Date is required'
@@ -167,9 +175,12 @@ export function AppointmentSheet({
     return Object.keys(newErrors).length === 0
   }
 
+  const hospitalId = useAppStore((state) => state.hospitalId)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
+    if (!hospitalId) return
 
     setSubmitting(true)
     try {
@@ -182,7 +193,7 @@ export function AppointmentSheet({
         providerName || providers.find((p) => p.id === providerId)?.name || 'Unknown Provider'
 
       if (isEdit && appointment) {
-        await updateAppointment(appointment.id, {
+        await updateAppointment(hospitalId, appointment.id, {
           patientId,
           patientName: resolvedPatientName,
           providerId,
@@ -198,7 +209,7 @@ export function AppointmentSheet({
           description: 'The appointment has been successfully updated.',
         })
       } else {
-        await createAppointment({
+        await createAppointment(hospitalId, {
           patientId,
           patientName: resolvedPatientName,
           providerId,
@@ -273,7 +284,7 @@ export function AppointmentSheet({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="facilitySelect" className="text-xs font-semibold">
-                Facility <span className="text-destructive">*</span>
+                Hospital <span className="text-destructive">*</span>
               </Label>
               {facilityId && (
                 <button
@@ -293,7 +304,7 @@ export function AppointmentSheet({
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="">
-                {facilitiesLoading ? 'Loading facilities...' : 'Select facility'}
+                {facilitiesLoading ? 'Loading hospitals...' : 'Select hospital'}
               </option>
               {facilities.map((f) => (
                 <option key={f.id} value={f.id}>

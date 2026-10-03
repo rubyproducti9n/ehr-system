@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -9,32 +9,60 @@ import {
   UserMinus,
   UserX,
   Stethoscope,
-  CalendarCheck,
   UserPlus,
   CalendarPlus,
   Plus,
   CalendarDays,
   ArrowRight,
   Calendar as CalendarIcon,
+  Activity,
+  Building2,
+  LogIn,
+  X,
 } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useAppointments } from '@/hooks/useAppointments'
+import { useAppStore } from '@/store/useAppStore'
 import { StatCard } from '@/components/shared/StatCard'
 import { NewPatientSheet } from '@/components/patients/NewPatientSheet'
 import { AppointmentSheet } from '@/components/scheduling/AppointmentSheet'
 import { formatDate, formatDateTime, getAvatarColor, getInitials } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
   const { patients, loading: patientsLoading } = usePatients()
   const { providers, loading: providersLoading } = useProviders()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { appointments, loading: appointmentsLoading } = useAppointments()
+
+  const hospitalName = useAppStore((state) => state.hospitalName)
+  const userRole = useAppStore((state) => state.userRole)
+  const [showWelcome, setShowWelcome] = useState(false)
+
+  useEffect(() => {
+    if (user?.uid) {
+      const dismissed = localStorage.getItem(`ehr-welcome-shown-${user.uid}`)
+      if (!dismissed) {
+        setShowWelcome(true)
+      }
+    }
+  }, [user?.uid])
+
+  const handleDismissWelcome = () => {
+    if (user?.uid) {
+      localStorage.setItem(`ehr-welcome-shown-${user.uid}`, 'true')
+    }
+    setShowWelcome(false)
+  }
 
   // Quick Action Sheet States
   const [patientSheetOpen, setPatientSheetOpen] = useState(false)
@@ -49,14 +77,9 @@ export default function DashboardPage() {
 
   // Section 1: Stats Calculations
   const stats = useMemo(() => {
-    const todayIso = new Date().toISOString().split('T')[0]
     const active = patients.filter((p) => p.status === 'active').length
     const inactive = patients.filter((p) => p.status === 'inactive').length
     const discharged = patients.filter((p) => p.status === 'discharged').length
-    const todayAppointments = appointments.filter((a) => {
-      const aDate = a.scheduledDate ? a.scheduledDate.split('T')[0] : ''
-      return aDate === todayIso
-    }).length
 
     return {
       totalPatients: patients.length,
@@ -64,9 +87,8 @@ export default function DashboardPage() {
       inactivePatients: inactive,
       dischargedPatients: discharged,
       totalProviders: providers.length,
-      todayAppointments,
     }
-  }, [patients, providers, appointments])
+  }, [patients, providers])
 
   // Section 2 - Left: 5 Most Recently Registered Patients (createdAt descending)
   const recentPatients = useMemo(() => {
@@ -94,8 +116,92 @@ export default function DashboardPage() {
     return list.slice(0, 5)
   }, [appointments])
 
+  if (!authLoading && !user) {
+    return (
+      <div className="w-full max-w-md mx-auto">
+        <Card className="shadow-xl border-slate-200">
+          <CardHeader className="text-center space-y-2">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md mb-2">
+              <Activity className="h-7 w-7" />
+            </div>
+            <CardTitle className="text-3xl font-bold tracking-tight text-slate-900">
+              EHR Platform
+            </CardTitle>
+            <CardDescription className="text-base text-slate-600">
+              Clinical management for modern healthcare
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <Button
+              asChild
+              size="lg"
+              className="w-full flex items-center justify-center gap-2 font-medium"
+            >
+              <Link href="/register/hospital">
+                <Building2 className="h-4 w-4" />
+                Register Your Hospital
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="w-full flex items-center justify-center gap-2 font-medium border-slate-300 hover:bg-slate-50"
+            >
+              <Link href="/register/staff">
+                <UserPlus className="h-4 w-4" />
+                Join as Staff
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="secondary"
+              className="w-full flex items-center justify-center gap-2 font-medium bg-slate-100 hover:bg-slate-200 text-slate-900"
+            >
+              <Link href="/login">
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const roleLabels: Record<string, string> = {
+    super_admin: 'Super Admin',
+    admin: 'Admin',
+    doctor: 'Doctor',
+    receptionist: 'Receptionist',
+  }
+
   return (
     <div className="space-y-8">
+      {/* Welcome Banner */}
+      {showWelcome && (
+        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg p-4 transition-all">
+          <div className="space-y-0.5">
+            <h2 className="text-base font-semibold text-foreground">
+              Welcome to <span className="text-primary font-bold">{hospitalName || 'your Hospital'}</span>
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Clinical dashboard and management overview
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDismissWelcome}
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Dismiss</span>
+          </Button>
+        </div>
+      )}
+
       {/* Header Info */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -107,18 +213,18 @@ export default function DashboardPage() {
       </div>
 
       {/* Section 1: Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {patientsLoading || providersLoading || appointmentsLoading ? (
-          Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {patientsLoading || providersLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="rounded-xl border border-border bg-card p-4 shadow-sm flex items-center justify-between"
+              className="rounded-xl border border-border bg-card p-5 min-h-[92px] shadow-sm flex items-center justify-between"
             >
               <div className="space-y-2">
                 <Skeleton className="h-7 w-12" />
                 <Skeleton className="h-3 w-20" />
               </div>
-              <Skeleton className="h-9 w-9 rounded-lg" />
+              <Skeleton className="h-10 w-10 rounded-lg" />
             </div>
           ))
         ) : (
@@ -128,36 +234,35 @@ export default function DashboardPage() {
               value={stats.totalPatients}
               color="blue"
               icon={Users}
+              href="/patients"
             />
             <StatCard
               label="Active Patients"
               value={stats.activePatients}
               color="green"
               icon={UserCheck}
+              href="/patients?status=active"
             />
             <StatCard
               label="Inactive Patients"
               value={stats.inactivePatients}
               color="yellow"
               icon={UserMinus}
+              href="/patients?status=inactive"
             />
             <StatCard
               label="Discharged"
               value={stats.dischargedPatients}
               color="gray"
               icon={UserX}
+              href="/patients?status=discharged"
             />
             <StatCard
               label="Total Providers"
               value={stats.totalProviders}
               color="blue"
               icon={Stethoscope}
-            />
-            <StatCard
-              label="Today's Appointments"
-              value={stats.todayAppointments}
-              color="blue"
-              icon={CalendarCheck}
+              href={(userRole === 'super_admin' || userRole === 'dev') ? "/providers" : undefined}
             />
           </>
         )}
@@ -411,23 +516,25 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Add Provider */}
-          <div
-            onClick={() => router.push('/providers')}
-            className="flex flex-col items-center justify-center p-5 rounded-xl border border-border bg-card shadow-sm hover:bg-muted/40 cursor-pointer transition-all hover:border-foreground/20 text-center space-y-2 group"
-          >
-            <div className="p-3 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
-              <Plus className="h-5 w-5" />
+          {/* Add Provider - Super Admin / Dev only */}
+          {(userRole === 'super_admin' || userRole === 'dev') && (
+            <div
+              onClick={() => router.push('/providers')}
+              className="flex flex-col items-center justify-center p-5 rounded-xl border border-border bg-card shadow-sm hover:bg-muted/40 cursor-pointer transition-all hover:border-foreground/20 text-center space-y-2 group"
+            >
+              <div className="p-3 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
+                <Plus className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Add Provider
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Register clinical staff in provider management
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                Add Provider
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Register clinical staff in provider management
-              </p>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

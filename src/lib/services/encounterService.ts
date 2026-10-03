@@ -1,4 +1,4 @@
-﻿import {
+import {
   ref,
   push,
   set,
@@ -10,14 +10,13 @@
 import { db } from '@/lib/firebase'
 import { Encounter } from '@/types'
 
-const ENCOUNTERS_PATH = 'encounters'
-
 // Realtime listener — returns unsubscribe function
 export function subscribeToEncounters(
+  hospitalId: string,
   patientId: string,
   callback: (encounters: Encounter[]) => void
 ): Unsubscribe {
-  const encRef = ref(db, ENCOUNTERS_PATH + '/' + patientId)
+  const encRef = ref(db, `hospitals/${hospitalId}/encounters/${patientId}`)
   return onValue(
     encRef,
     (snapshot) => {
@@ -40,12 +39,13 @@ export function subscribeToEncounters(
   )
 }
 
-// Create — uses push() to generate ID under /encounters/{patientId}
+// Create — uses push() to generate ID under /hospitals/{hospitalId}/encounters/{patientId}
 export async function createEncounter(
+  hospitalId: string,
   patientId: string,
   data: Omit<Encounter, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Encounter> {
-  const patientEncRef = ref(db, ENCOUNTERS_PATH + '/' + patientId)
+  const patientEncRef = ref(db, `hospitals/${hospitalId}/encounters/${patientId}`)
   const newRef = push(patientEncRef)
   const id = newRef.key as string
   const timestamp = new Date().toISOString()
@@ -64,13 +64,14 @@ export async function createEncounter(
 
 // Update — always sets updatedAt
 export async function updateEncounter(
+  hospitalId: string,
   patientId: string,
   encounterId: string,
   data: Partial<Omit<Encounter, 'id' | 'createdAt' | 'patientId'>>
 ): Promise<void> {
   const encRef = ref(
     db,
-    ENCOUNTERS_PATH + '/' + patientId + '/' + encounterId
+    `hospitals/${hospitalId}/encounters/${patientId}/${encounterId}`
   )
   const updatedAt = new Date().toISOString()
   await update(encRef, {
@@ -81,12 +82,13 @@ export async function updateEncounter(
 
 // Delete
 export async function deleteEncounter(
+  hospitalId: string,
   patientId: string,
   encounterId: string
 ): Promise<void> {
   const encRef = ref(
     db,
-    ENCOUNTERS_PATH + '/' + patientId + '/' + encounterId
+    `hospitals/${hospitalId}/encounters/${patientId}/${encounterId}`
   )
   await remove(encRef)
 }

@@ -1,44 +1,32 @@
-﻿import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  const session = request.cookies.get('__session')?.value
-  const { pathname } = request.nextUrl
+const PUBLIC_PATHS = ['/', '/login', '/register/hospital', '/register/staff']
+const AUTH_ONLY_PATHS = ['/dev', '/settings']
 
-  const isLoginPage = pathname === '/login'
-  const isPublicStatic =
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
-    pathname.startsWith('/favicon.ico')
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const session = req.cookies.get('__session')?.value
 
-  if (isPublicStatic) {
+  const isPublicPath = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/register/')
+  const isApiPath = pathname.startsWith('/api')
+
+  if (isApiPath) return NextResponse.next()
+
+  if (!session) {
+    if (!isPublicPath) {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
     return NextResponse.next()
   }
 
-  // If unauthenticated and trying to access dashboard/protected route
-  if (!session && !isLoginPage) {
-    const loginUrl = new URL('/login', request.url)
-    return NextResponse.redirect(loginUrl)
-  }
-
-  // If authenticated and trying to access /login
-  if (session && isLoginPage) {
-    const dashboardUrl = new URL('/', request.url)
-    return NextResponse.redirect(dashboardUrl)
+  // If authenticated user visits login or register pages, redirect to dashboard
+  if (session && (pathname === '/login' || pathname.startsWith('/register/'))) {
+    return NextResponse.redirect(new URL('/', req.url))
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

@@ -72,7 +72,7 @@ export function useSearch(query: string): {
           id: facility.id,
           type: 'facility',
           label: facility.name,
-          sublabel: facility.address || 'Medical Facility',
+          sublabel: facility.address || 'Hospital',
           href: '/facilities',
           icon: Building2,
         })

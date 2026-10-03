@@ -109,8 +109,34 @@ export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
           </div>
 
           <div className='flex justify-between items-start gap-2'>
-            <span className='text-muted-foreground'>Facility</span>
+            <span className='text-muted-foreground'>Hospital</span>
             <span className='font-medium text-foreground text-right'>{facilityName}</span>
+          </div>
+
+          <div className='flex justify-between items-center gap-2'>
+            <span className='text-muted-foreground'>Patient Type</span>
+            <div>
+              {patient.patientType === 'in-patient' && (
+                <Badge className='bg-blue-500 hover:bg-blue-600 text-white border-none text-[10px] px-1.5 py-0'>
+                  In-Patient
+                </Badge>
+              )}
+              {patient.patientType === 'out-patient' && (
+                <Badge className='bg-emerald-600 hover:bg-emerald-700 text-white border-none text-[10px] px-1.5 py-0'>
+                  Out-Patient
+                </Badge>
+              )}
+              {!patient.patientType && (
+                <span className='font-medium text-foreground text-right'>—</span>
+              )}
+            </div>
+          </div>
+
+          <div className='flex justify-between items-start gap-2'>
+            <span className='text-muted-foreground'>Admit Date</span>
+            <span className='font-medium text-foreground text-right'>
+              {formatDate(patient.admitDate ?? null)}
+            </span>
           </div>
 
           <div className='flex justify-between items-start gap-2'>

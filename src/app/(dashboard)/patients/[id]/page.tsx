@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { ArrowLeft, UserX } from 'lucide-react'
 import { Patient } from '@/types'
 import { getPatientById, subscribeToPatients } from '@/lib/services/patientService'
+import { useAppStore } from '@/store/useAppStore'
+import { hasPermission } from '@/lib/roles'
 import { DemographicsPanel } from '@/components/patients/DemographicsPanel'
 import { EditPatientSheet } from '@/components/patients/EditPatientSheet'
 import { AdtEventsTab } from '@/components/patients/tabs/AdtEventsTab'
@@ -17,13 +19,14 @@ import { PageError } from '@/components/error/PageError'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 
-const VALID_TABS = ['adt', 'lab', 'rx', 'docs', 'encounter'] as const
-type TabKey = typeof VALID_TABS[number]
-
 export default function PatientProfilePage() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const hospitalId = useAppStore((state) => state.hospitalId)
+  const userRole = useAppStore((state) => state.userRole)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
+  const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
 
   const patientId = params.id as string
 
@@ -31,22 +34,45 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [editSheetOpen, setEditSheetOpen] = useState(false)
 
+  const canViewClinical = hasPermission(userRole, 'canViewClinicalRecords')
+  const showAdt = isFeatureVisible('adt_events')
+
+  // List of valid tabs based on role and feature flags
+  const validTabs = useMemo(() => {
+    const tabs: string[] = []
+    if (showAdt) tabs.push('adt')
+    if (canViewClinical) {
+      tabs.push('lab', 'rx')
+    }
+    tabs.push('docs')
+    if (canViewClinical) {
+      tabs.push('encounter')
+    }
+    return tabs
+  }, [canViewClinical, showAdt])
+
   // Current active sub-tab from URL search param
   const currentTab = useMemo(() => {
-    const tabParam = searchParams.get('tab') as TabKey
-    if (tabParam && VALID_TABS.includes(tabParam)) {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && validTabs.includes(tabParam)) {
       return tabParam
     }
-    return 'adt'
-  }, [searchParams])
+    return validTabs[0] || 'docs'
+  }, [searchParams, validTabs])
 
   // Realtime & initial fetch
   useEffect(() => {
+    if (!hospitalId) {
+      setPatient(null)
+      setLoading(false)
+      return
+    }
+
     let isMounted = true
     setLoading(true)
 
     // Initial fetch
-    getPatientById(patientId)
+    getPatientById(hospitalId, patientId)
       .then((data) => {
         if (isMounted) {
           setPatient(data)
@@ -61,7 +87,7 @@ export default function PatientProfilePage() {
       })
 
     // Subscribe to realtime updates for live sync
-    const unsubscribe = subscribeToPatients((allPatients) => {
+    const unsubscribe = subscribeToPatients(hospitalId, (allPatients) => {
       if (!isMounted) return
       const matched = allPatients.find((p) => p.id === patientId)
       if (matched) {
@@ -75,7 +101,8 @@ export default function PatientProfilePage() {
         unsubscribe()
       }
     }
-  }, [patientId])
+  }, [hospitalId, patientId])
+
 
   const handleTabChange = (newTab: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -176,33 +203,54 @@ export default function PatientProfilePage() {
         {/* Right Sub-tab Navigation & Content (scrollable, flex-1) */}
         <div className='flex-1 w-full'>
           <Tabs value={currentTab} onValueChange={handleTabChange} className='w-full space-y-4'>
-            <TabsList className='grid grid-cols-5 w-full max-w-2xl bg-muted/70 p-1'>
-              <TabsTrigger value='adt'>ADT Events</TabsTrigger>
-              <TabsTrigger value='lab'>Lab Results</TabsTrigger>
-              <TabsTrigger value='rx'>Prescriptions</TabsTrigger>
+            <TabsList
+              className={`grid ${
+                canViewClinical
+                  ? showAdt
+                    ? 'grid-cols-5 max-w-2xl'
+                    : 'grid-cols-4 max-w-xl'
+                  : showAdt
+                  ? 'grid-cols-2 max-w-sm'
+                  : 'grid-cols-1 max-w-xs'
+              } w-full bg-muted/70 p-1`}
+            >
+              {showAdt && <TabsTrigger value='adt'>ADT Events</TabsTrigger>}
+              {canViewClinical && <TabsTrigger value='lab'>Lab Results</TabsTrigger>}
+              {canViewClinical && <TabsTrigger value='rx'>Prescriptions</TabsTrigger>}
               <TabsTrigger value='docs'>Documents</TabsTrigger>
-              <TabsTrigger value='encounter'>Encounter</TabsTrigger>
+              {canViewClinical && <TabsTrigger value='encounter'>Encounter</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value='adt' className='mt-0'>
-              <AdtEventsTab patientId={patient.id} />
-            </TabsContent>
+            {showAdt && (
+              <TabsContent value='adt' className='mt-0'>
+                <AdtEventsTab patientId={patient.id} />
+              </TabsContent>
+            )}
 
-            <TabsContent value='lab' className='mt-0'>
-              <LabResultsTab patientId={patient.id} />
-            </TabsContent>
+            {canViewClinical && (
+              <TabsContent value='lab' className='mt-0'>
+                <LabResultsTab patientId={patient.id} />
+              </TabsContent>
+            )}
 
-            <TabsContent value='rx' className='mt-0'>
-              <PrescriptionsTab patientId={patient.id} />
-            </TabsContent>
+            {canViewClinical && (
+              <TabsContent value='rx' className='mt-0'>
+                <PrescriptionsTab patientId={patient.id} />
+              </TabsContent>
+            )}
 
             <TabsContent value='docs' className='mt-0'>
               <DocumentsTab patientId={patient.id} />
             </TabsContent>
 
-            <TabsContent value='encounter' className='mt-0'>
-              <EncounterTab patientId={patient.id} />
-            </TabsContent>
+            {canViewClinical && (
+              <TabsContent value='encounter' className='mt-0'>
+                <EncounterTab
+                  patientId={patient.id}
+                  showTranscript={isFeatureEnabled('encounter_transcription')}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>

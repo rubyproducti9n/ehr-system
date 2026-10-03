@@ -1,10 +1,12 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Provider } from '@/types'
 import { createProvider, updateProvider } from '@/lib/services/providerService'
 import { useFacilities } from '@/hooks/useFacilities'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
+import { validatePhone, validateEmail, addDrPrefix } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,7 @@ export function ProviderDialog({
   onOpenChange,
   provider,
 }: ProviderDialogProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isEdit = !!provider
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
@@ -63,6 +66,13 @@ export function ProviderDialog({
     setErrors({})
   }, [provider, open])
 
+  // Auto-select single facility if only one exists
+  useEffect(() => {
+    if (facilities.length === 1 && !facilityId) {
+      setFacilityId(facilities[0].id)
+    }
+  }, [facilities, facilityId])
+
   const validate = () => {
     const newErrors: {
       name?: string
@@ -84,17 +94,20 @@ export function ProviderDialog({
 
     if (!phone.trim()) {
       newErrors.phone = 'Phone is required'
+    } else {
+      const phoneErr = validatePhone(phone)
+      if (phoneErr) newErrors.phone = phoneErr
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!email.trim()) {
       newErrors.email = 'Email is required'
-    } else if (!emailRegex.test(email.trim())) {
-      newErrors.email = 'Please enter a valid email format'
+    } else {
+      const emailErr = validateEmail(email)
+      if (emailErr) newErrors.email = emailErr
     }
 
     if (!facilityId) {
-      newErrors.facilityId = 'Facility is required'
+      newErrors.facilityId = 'Hospital is required'
     }
 
     setErrors(newErrors)
@@ -103,13 +116,16 @@ export function ProviderDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
+
+    const formattedName = addDrPrefix(name)
+    setName(formattedName)
 
     setSubmitting(true)
     try {
       if (isEdit && provider) {
-        await updateProvider(provider.id, {
-          name: name.trim(),
+        await updateProvider(hospitalId, provider.id, {
+          name: formattedName,
           specialty: specialty.trim(),
           phone: phone.trim(),
           email: email.trim(),
@@ -120,8 +136,8 @@ export function ProviderDialog({
           description: 'Provider details have been updated successfully.',
         })
       } else {
-        await createProvider({
-          name: name.trim(),
+        await createProvider(hospitalId, {
+          name: formattedName,
           specialty: specialty.trim(),
           phone: phone.trim(),
           email: email.trim(),
@@ -133,16 +149,18 @@ export function ProviderDialog({
         })
       }
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save provider.'
       toast({
         variant: 'destructive',
         title: 'Error saving provider',
-        description: err?.message || 'Failed to save provider.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,7 +228,7 @@ export function ProviderDialog({
           </div>
 
           <div className='space-y-1.5'>
-            <Label htmlFor='provider-facility'>Facility</Label>
+            <Label htmlFor='provider-facility'>Hospital</Label>
             <select
               id='provider-facility'
               value={facilityId}
@@ -220,10 +238,10 @@ export function ProviderDialog({
             >
               <option value=''>
                 {facilitiesLoading
-                  ? 'Loading facilities...'
+                  ? 'Loading hospitals...'
                   : facilities.length === 0
-                  ? 'No facilities registered yet'
-                  : 'Select a facility'}
+                  ? 'No hospitals registered yet'
+                  : 'Select a hospital'}
               </option>
               {facilities.map((fac) => (
                 <option key={fac.id} value={fac.id}>

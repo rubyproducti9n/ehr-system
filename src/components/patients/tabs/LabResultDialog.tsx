@@ -1,10 +1,11 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { LabResult } from '@/types'
 import { createLabResult, updateLabResult } from '@/lib/services/labResultService'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
@@ -41,6 +42,7 @@ export function LabResultDialog({
   open,
   onOpenChange,
 }: LabResultDialogProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isEdit = !!result
   const { toast } = useToast()
   const { providers, loading: providersLoading } = useProviders()
@@ -115,7 +117,7 @@ export function LabResultDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
@@ -127,9 +129,9 @@ export function LabResultDialog({
       }
 
       if (isEdit && result) {
-        await updateLabResult(patientId, result.id, payload)
+        await updateLabResult(hospitalId, patientId, result.id, payload)
       } else {
-        await createLabResult(patientId, { patientId, ...payload })
+        await createLabResult(hospitalId, patientId, { patientId, ...payload })
       }
 
       toast({
@@ -140,16 +142,18 @@ export function LabResultDialog({
       })
 
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save lab result.'
       toast({
         variant: 'destructive',
         title: 'Error saving result',
-        description: err?.message || 'Failed to save lab result.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

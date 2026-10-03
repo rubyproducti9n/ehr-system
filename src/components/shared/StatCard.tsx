@@ -1,4 +1,5 @@
 import React from 'react'
+import Link from 'next/link'
 import { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -7,6 +8,7 @@ export interface StatCardProps {
   value: number | string
   color?: 'blue' | 'green' | 'yellow' | 'gray' | 'red'
   icon?: LucideIcon
+  href?: string
 }
 
 const colorStyles: Record<NonNullable<StatCardProps['color']>, { text: string; bg: string; icon: string }> = {
@@ -37,22 +39,34 @@ const colorStyles: Record<NonNullable<StatCardProps['color']>, { text: string; b
   },
 }
 
-export function StatCard({ label, value, color = 'blue', icon: Icon }: StatCardProps) {
+export function StatCard({ label, value, color = 'blue', icon: Icon, href }: StatCardProps) {
   const styles = colorStyles[color] || colorStyles.blue
 
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex items-center justify-between">
-      <div className="space-y-1">
-        <p className={cn('text-2xl font-bold tracking-tight', styles.text)}>
+  const cardContent = (
+    <div
+      className={cn(
+        'rounded-xl border border-border bg-card p-5 min-h-[92px] shadow-sm flex items-center justify-between',
+        href && 'cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all duration-150'
+      )}
+      title={href ? `View ${label}` : undefined}
+    >
+      <div className="space-y-1.5">
+        <p className={cn('text-2xl sm:text-3xl font-bold tracking-tight', styles.text)}>
           {value}
         </p>
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
       </div>
       {Icon && (
-        <div className={cn('p-2.5 rounded-lg', styles.bg)}>
+        <div className={cn('p-3 rounded-lg', styles.bg)}>
           <Icon className={cn('h-5 w-5', styles.icon)} />
         </div>
       )}
     </div>
   )
+
+  if (href) {
+    return <Link href={href}>{cardContent}</Link>
+  }
+
+  return cardContent
 }

@@ -1,22 +1,25 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Encounter } from '@/types'
 import { subscribeToEncounters } from '@/lib/services/encounterService'
+import { useAppStore } from '@/store/useAppStore'
 
 export function useEncounters(patientId: string): {
   encounters: Encounter[]
   loading: boolean
   error: string | null
 } {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const [encounters, setEncounters] = useState<Encounter[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!patientId) {
+    if (!hospitalId || !patientId) {
       setEncounters([])
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -26,7 +29,7 @@ export function useEncounters(patientId: string): {
     let unsubscribe: () => void = () => {}
 
     try {
-      unsubscribe = subscribeToEncounters(patientId, (data) => {
+      unsubscribe = subscribeToEncounters(hospitalId, patientId, (data) => {
         // Sort by visitDate descending — most recent first
         const sorted = [...data].sort((a, b) => {
           const timeA = new Date(a.visitDate || a.createdAt || 0).getTime()
@@ -36,8 +39,9 @@ export function useEncounters(patientId: string): {
         setEncounters(sorted)
         setLoading(false)
       })
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load encounters')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load encounters'
+      setError(message)
       setLoading(false)
     }
 
@@ -46,7 +50,7 @@ export function useEncounters(patientId: string): {
         unsubscribe()
       }
     }
-  }, [patientId])
+  }, [hospitalId, patientId])
 
   return { encounters, loading, error }
 }

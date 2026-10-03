@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -8,6 +8,7 @@ import {
   updatePrescription,
 } from '@/lib/services/prescriptionService'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
@@ -55,6 +56,7 @@ export function PrescriptionDialog({
   open,
   onOpenChange,
 }: PrescriptionDialogProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isEdit = !!prescription
   const { toast } = useToast()
   const { providers, loading: providersLoading } = useProviders()
@@ -156,7 +158,7 @@ export function PrescriptionDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
@@ -172,9 +174,9 @@ export function PrescriptionDialog({
       }
 
       if (isEdit && prescription) {
-        await updatePrescription(patientId, prescription.id, payload)
+        await updatePrescription(hospitalId, patientId, prescription.id, payload)
       } else {
-        await createPrescription(patientId, { patientId, ...payload })
+        await createPrescription(hospitalId, patientId, { patientId, ...payload })
       }
 
       toast({
@@ -185,16 +187,18 @@ export function PrescriptionDialog({
       })
 
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save prescription.'
       toast({
         variant: 'destructive',
         title: 'Error saving prescription',
-        description: err?.message || 'Failed to save prescription.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

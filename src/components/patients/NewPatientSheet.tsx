@@ -1,11 +1,13 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Patient } from '@/types'
 import { createPatient } from '@/lib/services/patientService'
+import { createAdtEvent } from '@/lib/services/adtService'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { calculateAge } from '@/lib/utils'
 import { PatientFormFields } from '@/components/patients/PatientFormFields'
@@ -32,6 +34,7 @@ interface NewPatientSheetProps {
 }
 
 export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { providers, loading: providersLoading } = useProviders()
@@ -44,6 +47,8 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
   const [facilityId, setFacilityId] = useState('')
   const [currentDoctorId, setCurrentDoctorId] = useState('')
   const [status, setStatus] = useState<Patient['status']>('active')
+  const [patientType, setPatientType] = useState<'in-patient' | 'out-patient' | ''>('')
+  const [admitDate, setAdmitDate] = useState('')
 
   const [errors, setErrors] = useState<{
     name?: string
@@ -51,6 +56,8 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
     dob?: string
     facilityId?: string
     status?: string
+    patientType?: string
+    admitDate?: string
   }>({})
 
   const [submitting, setSubmitting] = useState(false)
@@ -65,9 +72,11 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
       allergiesInput !== '' ||
       facilityId !== '' ||
       currentDoctorId !== '' ||
-      status !== 'active'
+      status !== 'active' ||
+      patientType !== '' ||
+      admitDate !== ''
     )
-  }, [name, gender, dob, allergiesInput, facilityId, currentDoctorId, status])
+  }, [name, gender, dob, allergiesInput, facilityId, currentDoctorId, status, patientType, admitDate])
 
   // Filter providers to chosen facility
   const filteredProviders = useMemo(() => {
@@ -89,6 +98,8 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
     setFacilityId('')
     setCurrentDoctorId('')
     setStatus('active')
+    setPatientType('')
+    setAdmitDate('')
     setErrors({})
   }
 
@@ -127,6 +138,8 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
       dob?: string
       facilityId?: string
       status?: string
+      patientType?: string
+      admitDate?: string
     } = {}
 
     if (!name.trim()) {
@@ -150,11 +163,26 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
     }
 
     if (!facilityId) {
-      newErrors.facilityId = 'Facility is required'
+      newErrors.facilityId = 'Hospital is required'
     }
 
     if (!status) {
       newErrors.status = 'Status is required'
+    }
+
+    if (!patientType) {
+      newErrors.patientType = 'Patient type is required'
+    }
+
+    if (patientType && !admitDate) {
+      newErrors.admitDate = 'Admit date is required'
+    } else if (patientType && admitDate) {
+      const admit = new Date(admitDate)
+      const now = new Date()
+      const todayIso = now.toISOString().split('T')[0]
+      if (admitDate > todayIso) {
+        newErrors.admitDate = 'Admit date cannot be in the future'
+      }
     }
 
     setErrors(newErrors)
@@ -163,7 +191,7 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
@@ -176,7 +204,7 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
 
       const age = calculateAge(dob)
 
-      await createPatient({
+      const newPatient = await createPatient(hospitalId, {
         name: name.trim(),
         gender: gender as 'male' | 'female' | 'other',
         dob,
@@ -186,7 +214,26 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
         currentDoctorId: currentDoctorId || null,
         status: status as Patient['status'],
         facilityId,
+        patientType: (patientType || null) as Patient['patientType'],
+        admitDate: admitDate || null,
       })
+
+      // Auto-create ADT Event if patientType and admitDate exist
+      if (patientType && admitDate) {
+        const dischargeDate = patientType === 'out-patient' ? admitDate : null
+        try {
+          await createAdtEvent(hospitalId, newPatient.id, {
+            patientId: newPatient.id,
+            admitDate: admitDate,
+            dischargedDate: dischargeDate,
+            reAdmitDate: null,
+            effectiveDate: admitDate,
+            notes: `Auto-created on patient registration. Type: ${patientType}.`,
+          })
+        } catch (adtErr) {
+          console.error('Failed to auto-create ADT event on registration:', adtErr)
+        }
+      }
 
       toast({
         title: 'Patient registered successfully',
@@ -195,16 +242,18 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
 
       resetForm()
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to register patient.'
       toast({
         variant: 'destructive',
         title: 'Registration Error',
-        description: err?.message || 'Failed to register patient.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <>
@@ -242,6 +291,10 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
               setCurrentDoctorId={setCurrentDoctorId}
               status={status}
               setStatus={setStatus}
+              patientType={patientType}
+              setPatientType={setPatientType}
+              admitDate={admitDate}
+              setAdmitDate={setAdmitDate}
               errors={errors}
               facilities={facilities}
               facilitiesLoading={facilitiesLoading}

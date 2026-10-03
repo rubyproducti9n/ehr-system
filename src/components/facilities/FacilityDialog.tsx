@@ -1,9 +1,11 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Facility } from '@/types'
 import { createFacility, updateFacility } from '@/lib/services/facilityService'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
+import { validatePhone } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -26,6 +28,7 @@ export function FacilityDialog({
   onOpenChange,
   facility,
 }: FacilityDialogProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isEdit = !!facility
   const { toast } = useToast()
 
@@ -56,9 +59,9 @@ export function FacilityDialog({
   const validate = () => {
     const newErrors: { name?: string; address?: string; phone?: string } = {}
     if (!name.trim()) {
-      newErrors.name = 'Facility name is required'
+      newErrors.name = 'Hospital name is required'
     } else if (name.trim().length < 2) {
-      newErrors.name = 'Facility name must be at least 2 characters'
+      newErrors.name = 'Hospital name must be at least 2 characters'
     }
 
     if (!address.trim()) {
@@ -67,6 +70,9 @@ export function FacilityDialog({
 
     if (!phone.trim()) {
       newErrors.phone = 'Phone number is required'
+    } else {
+      const phoneErr = validatePhone(phone)
+      if (phoneErr) newErrors.phone = phoneErr
     }
 
     setErrors(newErrors)
@@ -75,52 +81,54 @@ export function FacilityDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
       if (isEdit && facility) {
-        await updateFacility(facility.id, {
+        await updateFacility(hospitalId, facility.id, {
           name: name.trim(),
           address: address.trim(),
           phone: phone.trim(),
         })
         toast({
-          title: 'Facility updated',
-          description: 'Facility details have been updated successfully.',
+          title: 'Hospital updated',
+          description: 'Hospital details have been updated successfully.',
         })
       } else {
-        await createFacility({
+        await createFacility(hospitalId, {
           name: name.trim(),
           address: address.trim(),
           phone: phone.trim(),
         })
         toast({
-          title: 'Facility added',
-          description: 'New facility has been registered successfully.',
+          title: 'Hospital added',
+          description: 'New hospital has been registered successfully.',
         })
       }
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save hospital.'
       toast({
         variant: 'destructive',
-        title: 'Error saving facility',
-        description: err?.message || 'Failed to save facility.',
+        title: 'Error saving hospital',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
 
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-[480px]'>
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Facility' : 'Add Facility'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Hospital' : 'Add Hospital'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className='space-y-4 pt-2'>
           <div className='space-y-1.5'>
-            <Label htmlFor='facility-name'>Facility Name</Label>
+            <Label htmlFor='facility-name'>Hospital Name</Label>
             <Input
               id='facility-name'
               value={name}
@@ -177,7 +185,7 @@ export function FacilityDialog({
                 ? 'Saving...'
                 : isEdit
                 ? 'Save Changes'
-                : 'Add Facility'}
+                : 'Add Hospital'}
             </Button>
           </DialogFooter>
         </form>

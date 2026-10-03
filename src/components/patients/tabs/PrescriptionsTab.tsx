@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Plus, Edit, Trash2, Pill, MoreHorizontal, Filter } from 'lucide-react'
+import { Plus, Edit, Trash2, Pill, MoreHorizontal, Filter, Lock } from 'lucide-react'
 import { Prescription } from '@/types'
 import { usePrescriptions } from '@/hooks/usePrescriptions'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
+import { hasPermission } from '@/lib/roles'
 import {
   deletePrescription,
   updatePrescriptionStatus,
@@ -42,6 +44,8 @@ interface PrescriptionsTabProps {
 type FilterStatus = 'all' | 'active' | 'completed' | 'discontinued'
 
 export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
+  const userRole = useAppStore((state) => state.userRole)
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const {
     prescriptions,
     loading: rxLoading,
@@ -55,6 +59,18 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
   const [selectedRx, setSelectedRx] = useState<Prescription | undefined>(
     undefined
   )
+
+  // Role check: If cannot view clinical records, show Lock EmptyState
+  if (!hasPermission(userRole, 'canViewClinicalRecords')) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Access Restricted"
+        description="Your role does not have access to prescription records."
+      />
+    )
+  }
+
 
   // In-row inline deletion confirmation: stores prescriptionId
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -99,9 +115,9 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
     rx: Prescription,
     status: Prescription['status']
   ) => {
-    if (rx.status === status) return
+    if (rx.status === status || !hospitalId) return
     try {
-      await updatePrescriptionStatus(patientId, rx.id, status)
+      await updatePrescriptionStatus(hospitalId, patientId, rx.id, status)
       toast({
         title: 'Prescription status updated',
         description: `Status updated to ${status}`,
@@ -117,9 +133,10 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
   }
 
   const handleConfirmDelete = async (id: string) => {
+    if (!hospitalId) return
     setSubmittingDelete(true)
     try {
-      await deletePrescription(patientId, id)
+      await deletePrescription(hospitalId, patientId, id)
       toast({
         title: 'Prescription deleted',
         description: 'Prescription deleted',
@@ -136,6 +153,7 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
       setSubmittingDelete(false)
     }
   }
+
 
   const isLoading = rxLoading || providersLoading
 

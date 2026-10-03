@@ -1,4 +1,4 @@
-﻿import {
+import {
   ref,
   push,
   set,
@@ -11,13 +11,12 @@
 import { db } from '@/lib/firebase'
 import { Patient } from '@/types'
 
-const PATIENTS_PATH = 'patients'
-
 // Realtime listener — returns unsubscribe function
 export function subscribeToPatients(
+  hospitalId: string,
   callback: (patients: Patient[]) => void
 ): Unsubscribe {
-  const patientsRef = ref(db, PATIENTS_PATH)
+  const patientsRef = ref(db, `hospitals/${hospitalId}/patients`)
   return onValue(
     patientsRef,
     (snapshot) => {
@@ -40,8 +39,8 @@ export function subscribeToPatients(
 }
 
 // One-time fetch by ID
-export async function getPatientById(id: string): Promise<Patient | null> {
-  const patientRef = ref(db, PATIENTS_PATH + '/' + id)
+export async function getPatientById(hospitalId: string, id: string): Promise<Patient | null> {
+  const patientRef = ref(db, `hospitals/${hospitalId}/patients/${id}`)
   const snapshot = await get(patientRef)
   const data = snapshot.val()
   if (!data) return null
@@ -53,9 +52,10 @@ export async function getPatientById(id: string): Promise<Patient | null> {
 
 // Create — uses Firebase push() to generate ID
 export async function createPatient(
+  hospitalId: string,
   data: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Patient> {
-  const patientsRef = ref(db, PATIENTS_PATH)
+  const patientsRef = ref(db, `hospitals/${hospitalId}/patients`)
   const newRef = push(patientsRef)
   const id = newRef.key as string
   const timestamp = new Date().toISOString()
@@ -73,10 +73,11 @@ export async function createPatient(
 
 // Update — partial update, always sets updatedAt
 export async function updatePatient(
+  hospitalId: string,
   id: string,
   data: Partial<Omit<Patient, 'id' | 'createdAt'>>
 ): Promise<void> {
-  const patientRef = ref(db, PATIENTS_PATH + '/' + id)
+  const patientRef = ref(db, `hospitals/${hospitalId}/patients/${id}`)
   const updatedAt = new Date().toISOString()
   await update(patientRef, {
     ...data,
@@ -86,14 +87,15 @@ export async function updatePatient(
 
 // Thin wrapper over updatePatient for status changes
 export async function updatePatientStatus(
+  hospitalId: string,
   id: string,
   status: Patient['status']
 ): Promise<void> {
-  await updatePatient(id, { status })
+  await updatePatient(hospitalId, id, { status })
 }
 
 // Delete
-export async function deletePatient(id: string): Promise<void> {
-  const patientRef = ref(db, PATIENTS_PATH + '/' + id)
+export async function deletePatient(hospitalId: string, id: string): Promise<void> {
+  const patientRef = ref(db, `hospitals/${hospitalId}/patients/${id}`)
   await remove(patientRef)
 }

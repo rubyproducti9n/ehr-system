@@ -1,4 +1,4 @@
-﻿export interface Patient {
+export interface Patient {
   id: string
   name: string
   gender: 'male' | 'female' | 'other'
@@ -9,6 +9,8 @@
   currentDoctorId: string | null
   status: 'active' | 'inactive' | 'discharged'
   facilityId: string
+  patientType?: 'in-patient' | 'out-patient' | null
+  admitDate?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -105,5 +107,79 @@ export interface AppUser {
   uid: string
   email: string
   displayName: string
-  role: 'admin' | 'doctor' | 'receptionist'
+  role: 'super_admin' | 'admin' | 'doctor' | 'receptionist' | 'dev'
+  hospitalId: string
+  hospitalCode: string
 }
+
+export interface HospitalProfile {
+  name: string
+  address: string
+  phone: string
+  email: string
+  createdAt: string
+  superAdminUid: string
+  hospitalCode: string
+}
+
+export interface StaffMember {
+  uid: string
+  email: string
+  displayName: string
+  role: 'super_admin' | 'admin' | 'doctor' | 'receptionist' | 'dev'
+  joinedAt: string
+  isActive: boolean
+}
+
+export interface ExtractionAuditLog {
+  id: string
+  timestamp: string
+  documentType: string
+  patientId: string
+  performedBy: string
+  ocrConfidence: number
+  totalFields: number
+  autoApprovedFields: number
+  manuallyApprovedFields: number
+  editedFields: number
+  modelUsed: string
+  inferenceTimeMs: number
+  preprocessingApplied: string[]
+  rawModelOutput: string | null
+  finalData: Record<string, unknown>
+}
+
+export interface FieldCorrection {
+  id: string
+  auditLogId: string
+  fieldPath: string
+  originalValue: string | null
+  correctedValue: string
+  correctedBy: string
+  correctedAt: string
+  confidence: string
+  documentType: string
+  patientId: string
+}
+
+export interface AppSettings {
+  storageLocation: string | null
+  storageLocationSetAt: string | null
+  storageLocationSetBy: string | null
+  extractionMode?: 'online' | 'offline' | null
+  aiModel?: string | null
+}
+
+export interface FeatureFlag {
+  key: string
+  label: string
+  description: string
+  enabled: boolean
+  visible: boolean
+  category: 'ai' | 'clinical' | 'admin' | 'dev' | 'experimental'
+  updatedAt: string
+  updatedBy: string
+}
+
+
+

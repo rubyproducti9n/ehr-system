@@ -1,9 +1,10 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { AdtEvent } from '@/types'
 import { createAdtEvent, updateAdtEvent } from '@/lib/services/adtService'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
@@ -41,6 +42,7 @@ export function AdtEventDialog({
   open,
   onOpenChange,
 }: AdtEventDialogProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isEdit = !!event
   const { toast } = useToast()
 
@@ -110,7 +112,7 @@ export function AdtEventDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
@@ -123,9 +125,9 @@ export function AdtEventDialog({
       }
 
       if (isEdit && event) {
-        await updateAdtEvent(patientId, event.id, payload)
+        await updateAdtEvent(hospitalId, patientId, event.id, payload)
       } else {
-        await createAdtEvent(patientId, {
+        await createAdtEvent(hospitalId, patientId, {
           patientId,
           ...payload,
         })
@@ -137,16 +139,18 @@ export function AdtEventDialog({
       })
 
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save ADT event.'
       toast({
         variant: 'destructive',
         title: 'Error saving event',
-        description: err?.message || 'Failed to save ADT event.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

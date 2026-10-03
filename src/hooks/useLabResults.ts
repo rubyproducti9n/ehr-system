@@ -1,22 +1,25 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { LabResult } from '@/types'
 import { subscribeToLabResults } from '@/lib/services/labResultService'
+import { useAppStore } from '@/store/useAppStore'
 
 export function useLabResults(patientId: string): {
   results: LabResult[]
   loading: boolean
   error: string | null
 } {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const [results, setResults] = useState<LabResult[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!patientId) {
+    if (!hospitalId || !patientId) {
       setResults([])
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -26,7 +29,7 @@ export function useLabResults(patientId: string): {
     let unsubscribe: () => void = () => {}
 
     try {
-      unsubscribe = subscribeToLabResults(patientId, (data) => {
+      unsubscribe = subscribeToLabResults(hospitalId, patientId, (data) => {
         // Sort by resultDate descending — most recent first
         const sorted = [...data].sort((a, b) => {
           const timeA = new Date(a.resultDate || a.createdAt || 0).getTime()
@@ -36,8 +39,9 @@ export function useLabResults(patientId: string): {
         setResults(sorted)
         setLoading(false)
       })
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load lab results')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load lab results'
+      setError(message)
       setLoading(false)
     }
 
@@ -46,7 +50,7 @@ export function useLabResults(patientId: string): {
         unsubscribe()
       }
     }
-  }, [patientId])
+  }, [hospitalId, patientId])
 
   return { results, loading, error }
 }

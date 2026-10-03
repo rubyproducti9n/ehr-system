@@ -5,8 +5,10 @@ import { Plus, Edit, Trash2, Calendar, FileText, ClipboardList } from 'lucide-re
 import { AdtEvent } from '@/types'
 import { useAdtEvents } from '@/hooks/useAdtEvents'
 import { deleteAdtEvent } from '@/lib/services/adtService'
+import { useAppStore } from '@/store/useAppStore'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { hasPermission } from '@/lib/roles'
 import { AdtEventDialog } from './AdtEventDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -19,6 +21,9 @@ interface AdtEventsTabProps {
 }
 
 export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
+  const userRole = useAppStore((state) => state.userRole)
+  const canEdit = hasPermission(userRole, 'canEditClinicalRecords')
   const { events, loading, error } = useAdtEvents(patientId)
   const { toast } = useToast()
 
@@ -40,9 +45,10 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
   }
 
   const handleConfirmDelete = async (eventId: string) => {
+    if (!hospitalId) return
     setSubmittingDelete(true)
     try {
-      await deleteAdtEvent(patientId, eventId)
+      await deleteAdtEvent(hospitalId, patientId, eventId)
       toast({
         title: 'ADT event deleted',
         description: 'ADT event has been deleted.',
@@ -60,6 +66,7 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
     }
   }
 
+
   return (
     <ErrorBoundary
       fallback={
@@ -75,10 +82,12 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
           <span className='text-sm font-medium text-muted-foreground'>
             ADT Events
           </span>
-          <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
-            <Plus className='h-4 w-4' />
-            Add Event
-          </Button>
+          {canEdit && (
+            <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
+              <Plus className='h-4 w-4' />
+              Add Event
+            </Button>
+          )}
         </div>
 
         {error && (
@@ -117,10 +126,14 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
             <EmptyState
               icon={ClipboardList}
               title='No ADT events recorded'
-              action={{
-                label: 'Add Event',
-                onClick: handleOpenAdd,
-              }}
+              action={
+                canEdit
+                  ? {
+                      label: 'Add Event',
+                      onClick: handleOpenAdd,
+                    }
+                  : undefined
+              }
             />
           ) : (
             // Stacked Timeline Cards
@@ -149,57 +162,59 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
                       </div>
 
                       {/* Actions: Normal vs Inline Delete Confirmation */}
-                      <div>
-                        {isConfirmingDelete ? (
-                          <div className='flex items-center gap-2 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-md'>
-                            <span className='text-xs font-medium text-destructive'>
-                              Confirm delete?
-                            </span>
-                            <Button
-                              size='sm'
-                              variant='destructive'
-                              onClick={() => handleConfirmDelete(event.id)}
-                              disabled={submittingDelete}
-                              className='h-6 px-2 text-xs'
-                              autoFocus
-                            >
-                              Yes
-                            </Button>
-                            <Button
-                              size='sm'
-                              variant='outline'
-                              onClick={() => setDeletingId(null)}
-                              disabled={submittingDelete}
-                              className='h-6 px-2 text-xs'
-                            >
-                              No
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className='flex items-center gap-1'>
-                            <Button
-                              variant='ghost'
-                              size='icon'
-                              onClick={() => handleOpenEdit(event)}
-                              className='h-8 w-8 text-muted-foreground hover:text-foreground'
-                              title='Edit ADT Event'
-                              aria-label='Edit ADT event'
-                            >
-                              <Edit className='h-4 w-4' />
-                            </Button>
-                            <Button
-                              variant='ghost'
-                              size='icon'
-                              onClick={() => setDeletingId(event.id)}
-                              className='h-8 w-8 text-muted-foreground hover:text-destructive'
-                              title='Delete ADT Event'
-                              aria-label='Delete ADT event'
-                            >
-                              <Trash2 className='h-4 w-4' />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
+                      {canEdit && (
+                        <div>
+                          {isConfirmingDelete ? (
+                            <div className='flex items-center gap-2 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-md'>
+                              <span className='text-xs font-medium text-destructive'>
+                                Confirm delete?
+                              </span>
+                              <Button
+                                size='sm'
+                                variant='destructive'
+                                onClick={() => handleConfirmDelete(event.id)}
+                                disabled={submittingDelete}
+                                className='h-6 px-2 text-xs'
+                                autoFocus
+                              >
+                                Yes
+                              </Button>
+                              <Button
+                                size='sm'
+                                variant='outline'
+                                onClick={() => setDeletingId(null)}
+                                disabled={submittingDelete}
+                                className='h-6 px-2 text-xs'
+                              >
+                                No
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className='flex items-center gap-1'>
+                              <Button
+                                variant='ghost'
+                                size='icon'
+                                onClick={() => handleOpenEdit(event)}
+                                className='h-8 w-8 text-muted-foreground hover:text-foreground'
+                                title='Edit ADT Event'
+                                aria-label='Edit ADT event'
+                              >
+                                <Edit className='h-4 w-4' />
+                              </Button>
+                              <Button
+                                variant='ghost'
+                                size='icon'
+                                onClick={() => setDeletingId(event.id)}
+                                className='h-8 w-8 text-muted-foreground hover:text-destructive'
+                                title='Delete ADT Event'
+                                aria-label='Delete ADT event'
+                              >
+                                <Trash2 className='h-4 w-4' />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 3-Column Dates Grid */}

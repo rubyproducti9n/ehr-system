@@ -1,4 +1,4 @@
-﻿import {
+import {
   ref,
   push,
   set,
@@ -10,14 +10,13 @@
 import { db } from '@/lib/firebase'
 import { LabResult } from '@/types'
 
-const LAB_PATH = 'labResults'
-
 // Realtime listener — returns unsubscribe function
 export function subscribeToLabResults(
+  hospitalId: string,
   patientId: string,
   callback: (results: LabResult[]) => void
 ): Unsubscribe {
-  const labRef = ref(db, LAB_PATH + '/' + patientId)
+  const labRef = ref(db, `hospitals/${hospitalId}/labResults/${patientId}`)
   return onValue(
     labRef,
     (snapshot) => {
@@ -40,12 +39,13 @@ export function subscribeToLabResults(
   )
 }
 
-// Create — uses push() to generate ID under /labResults/{patientId}
+// Create — uses push() to generate ID under /hospitals/{hospitalId}/labResults/{patientId}
 export async function createLabResult(
+  hospitalId: string,
   patientId: string,
   data: Omit<LabResult, 'id' | 'createdAt'>
 ): Promise<LabResult> {
-  const patientLabRef = ref(db, LAB_PATH + '/' + patientId)
+  const patientLabRef = ref(db, `hospitals/${hospitalId}/labResults/${patientId}`)
   const newRef = push(patientLabRef)
   const id = newRef.key as string
   const createdAt = new Date().toISOString()
@@ -63,19 +63,21 @@ export async function createLabResult(
 
 // Update — partial update
 export async function updateLabResult(
+  hospitalId: string,
   patientId: string,
   resultId: string,
   data: Partial<Omit<LabResult, 'id' | 'createdAt' | 'patientId'>>
 ): Promise<void> {
-  const resultRef = ref(db, LAB_PATH + '/' + patientId + '/' + resultId)
+  const resultRef = ref(db, `hospitals/${hospitalId}/labResults/${patientId}/${resultId}`)
   await update(resultRef, data)
 }
 
 // Delete
 export async function deleteLabResult(
+  hospitalId: string,
   patientId: string,
   resultId: string
 ): Promise<void> {
-  const resultRef = ref(db, LAB_PATH + '/' + patientId + '/' + resultId)
+  const resultRef = ref(db, `hospitals/${hospitalId}/labResults/${patientId}/${resultId}`)
   await remove(resultRef)
 }

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -6,6 +6,7 @@ import { Patient } from '@/types'
 import { updatePatient } from '@/lib/services/patientService'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { calculateAge } from '@/lib/utils'
 import { PatientFormFields } from '@/components/patients/PatientFormFields'
@@ -29,6 +30,7 @@ export function EditPatientSheet({
   open,
   onOpenChange,
 }: EditPatientSheetProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { providers, loading: providersLoading } = useProviders()
@@ -41,6 +43,8 @@ export function EditPatientSheet({
   const [facilityId, setFacilityId] = useState('')
   const [currentDoctorId, setCurrentDoctorId] = useState('')
   const [status, setStatus] = useState<Patient['status']>('active')
+  const [patientType, setPatientType] = useState<'in-patient' | 'out-patient' | ''>('')
+  const [admitDate, setAdmitDate] = useState('')
 
   const [errors, setErrors] = useState<{
     name?: string
@@ -48,6 +52,8 @@ export function EditPatientSheet({
     dob?: string
     facilityId?: string
     status?: string
+    patientType?: string
+    admitDate?: string
   }>({})
 
   const [submitting, setSubmitting] = useState(false)
@@ -66,6 +72,8 @@ export function EditPatientSheet({
       setFacilityId(patient.facilityId || '')
       setCurrentDoctorId(patient.currentDoctorId || '')
       setStatus(patient.status || 'active')
+      setPatientType((patient.patientType || '') as 'in-patient' | 'out-patient' | '')
+      setAdmitDate(patient.admitDate || '')
     }
     setErrors({})
   }, [patient, open])
@@ -101,6 +109,8 @@ export function EditPatientSheet({
       dob?: string
       facilityId?: string
       status?: string
+      patientType?: string
+      admitDate?: string
     } = {}
 
     if (!name.trim()) {
@@ -124,11 +134,24 @@ export function EditPatientSheet({
     }
 
     if (!facilityId) {
-      newErrors.facilityId = 'Facility is required'
+      newErrors.facilityId = 'Hospital is required'
     }
 
     if (!status) {
       newErrors.status = 'Status is required'
+    }
+
+    if (!patientType) {
+      newErrors.patientType = 'Patient type is required'
+    }
+
+    if (patientType && !admitDate) {
+      newErrors.admitDate = 'Admit date is required'
+    } else if (patientType && admitDate) {
+      const todayIso = new Date().toISOString().split('T')[0]
+      if (admitDate > todayIso) {
+        newErrors.admitDate = 'Admit date cannot be in the future'
+      }
     }
 
     setErrors(newErrors)
@@ -137,7 +160,7 @@ export function EditPatientSheet({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate() || !hospitalId) return
 
     setSubmitting(true)
     try {
@@ -150,7 +173,7 @@ export function EditPatientSheet({
 
       const age = calculateAge(dob)
 
-      await updatePatient(patient.id, {
+      await updatePatient(hospitalId, patient.id, {
         name: name.trim(),
         gender: gender as 'male' | 'female' | 'other',
         dob,
@@ -159,6 +182,8 @@ export function EditPatientSheet({
         currentDoctorId: currentDoctorId || null,
         status: status as Patient['status'],
         facilityId,
+        patientType: (patientType || null) as Patient['patientType'],
+        admitDate: admitDate || null,
       })
 
       toast({
@@ -167,16 +192,18 @@ export function EditPatientSheet({
       })
 
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update patient.'
       toast({
         variant: 'destructive',
         title: 'Update Error',
-        description: err?.message || 'Failed to update patient.',
+        description: message,
       })
     } finally {
       setSubmitting(false)
     }
   }
+
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -204,6 +231,10 @@ export function EditPatientSheet({
             setCurrentDoctorId={setCurrentDoctorId}
             status={status}
             setStatus={setStatus}
+            patientType={patientType}
+            setPatientType={setPatientType}
+            admitDate={admitDate}
+            setAdmitDate={setAdmitDate}
             errors={errors}
             facilities={facilities}
             facilitiesLoading={facilitiesLoading}

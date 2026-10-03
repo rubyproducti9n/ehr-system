@@ -1,5 +1,7 @@
-﻿import type { Metadata } from 'next'
+import type { Metadata } from 'next'
 import localFont from 'next/font/local'
+import { Suspense } from 'react'
+import { TopProgressBar } from '@/components/layout/TopProgressBar'
 import './globals.css'
 
 const geistSans = localFont({
@@ -28,6 +30,9 @@ export default function RootLayout({
       <body
         className={geistSans.variable + ' ' + geistMono.variable + ' antialiased min-h-screen font-sans'}
       >
+        <Suspense fallback={null}>
+          <TopProgressBar />
+        </Suspense>
         {children}
       </body>
     </html>

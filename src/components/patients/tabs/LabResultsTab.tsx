@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Edit, Trash2, FlaskConical, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Edit, Trash2, FlaskConical, ChevronDown, ChevronUp, Lock } from 'lucide-react'
 import { LabResult } from '@/types'
 import { useLabResults } from '@/hooks/useLabResults'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
+import { hasPermission } from '@/lib/roles'
 import { deleteLabResult } from '@/lib/services/labResultService'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -142,6 +144,8 @@ function LabResultCard({
 }
 
 export function LabResultsTab({ patientId }: LabResultsTabProps) {
+  const userRole = useAppStore((state) => state.userRole)
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { results, loading: labLoading, error } = useLabResults(patientId)
   const { providers, loading: providersLoading } = useProviders()
   const { toast } = useToast()
@@ -150,6 +154,18 @@ export function LabResultsTab({ patientId }: LabResultsTabProps) {
   const [selectedResult, setSelectedResult] = useState<LabResult | undefined>(
     undefined
   )
+
+  // Role check: If cannot view clinical records, show Lock EmptyState
+  if (!hasPermission(userRole, 'canViewClinicalRecords')) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Access Restricted"
+        description="Your role does not have access to lab results."
+      />
+    )
+  }
+
 
   const providerMap = new Map<string, string>()
   providers.forEach((p) => providerMap.set(p.id, p.name))
@@ -165,8 +181,9 @@ export function LabResultsTab({ patientId }: LabResultsTabProps) {
   }
 
   const handleDelete = async (id: string) => {
+    if (!hospitalId) return
     try {
-      await deleteLabResult(patientId, id)
+      await deleteLabResult(hospitalId, patientId, id)
       toast({
         title: 'Lab result deleted',
         description: 'Lab result has been deleted.',
@@ -180,6 +197,7 @@ export function LabResultsTab({ patientId }: LabResultsTabProps) {
       })
     }
   }
+
 
   const isLoading = labLoading || providersLoading
 

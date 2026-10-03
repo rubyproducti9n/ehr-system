@@ -1,22 +1,25 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { AdtEvent } from '@/types'
 import { subscribeToAdtEvents } from '@/lib/services/adtService'
+import { useAppStore } from '@/store/useAppStore'
 
 export function useAdtEvents(patientId: string): {
   events: AdtEvent[]
   loading: boolean
   error: string | null
 } {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const [events, setEvents] = useState<AdtEvent[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!patientId) {
+    if (!hospitalId || !patientId) {
       setEvents([])
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -26,7 +29,7 @@ export function useAdtEvents(patientId: string): {
     let unsubscribe: () => void = () => {}
 
     try {
-      unsubscribe = subscribeToAdtEvents(patientId, (data) => {
+      unsubscribe = subscribeToAdtEvents(hospitalId, patientId, (data) => {
         // Sort returned events by createdAt descending (most recent first)
         const sorted = [...data].sort((a, b) => {
           const timeA = new Date(a.createdAt || 0).getTime()
@@ -36,8 +39,9 @@ export function useAdtEvents(patientId: string): {
         setEvents(sorted)
         setLoading(false)
       })
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load ADT events')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load ADT events'
+      setError(message)
       setLoading(false)
     }
 
@@ -46,7 +50,7 @@ export function useAdtEvents(patientId: string): {
         unsubscribe()
       }
     }
-  }, [patientId])
+  }, [hospitalId, patientId])
 
   return { events, loading, error }
 }

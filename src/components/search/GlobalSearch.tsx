@@ -14,6 +14,8 @@ import {
   CommandItem,
 } from '@/components/ui/command'
 
+import { useAppStore } from '@/store/useAppStore'
+
 interface GlobalSearchProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -21,6 +23,8 @@ interface GlobalSearchProps {
 
 export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const router = useRouter()
+  const userRole = useAppStore((state) => state.userRole)
+  const isSuperAdminOrDev = userRole === 'super_admin' || userRole === 'dev'
   const [query, setQuery] = useState('')
   const { results, isEmpty } = useSearch(query)
 
@@ -37,15 +41,15 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   }
 
   const patientResults = results.filter((r) => r.type === 'patient')
-  const providerResults = results.filter((r) => r.type === 'provider')
-  const facilityResults = results.filter((r) => r.type === 'facility')
+  const providerResults = isSuperAdminOrDev ? results.filter((r) => r.type === 'provider') : []
+  const facilityResults = isSuperAdminOrDev ? results.filter((r) => r.type === 'facility') : []
 
   const showInitialPrompt = query.trim().length < 2
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput
-        placeholder="Search patients, providers, facilities..."
+        placeholder="Search patients, providers, hospitals..."
         value={query}
         onValueChange={setQuery}
       />
@@ -59,7 +63,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
               Universal Search
             </p>
             <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-              Start typing to search patients, providers, and facilities across the platform.
+              Start typing to search patients, providers, and hospitals across the platform.
             </p>
           </div>
         ) : isEmpty ? (
@@ -127,7 +131,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
             )}
 
             {facilityResults.length > 0 && (
-              <CommandGroup heading="Facilities">
+              <CommandGroup heading="Hospitals">
                 {facilityResults.map((item) => (
                   <CommandItem
                     key={`facility-${item.id}`}
@@ -149,7 +153,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-[10px] font-normal uppercase tracking-wider">
-                      Facility
+                      Hospital
                     </Badge>
                   </CommandItem>
                 ))}

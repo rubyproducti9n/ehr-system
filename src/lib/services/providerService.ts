@@ -1,4 +1,4 @@
-﻿import {
+import {
   ref,
   push,
   set,
@@ -11,13 +11,12 @@
 import { db } from '@/lib/firebase'
 import { Provider } from '@/types'
 
-const PROVIDERS_PATH = 'providers'
-
 // Realtime listener — returns unsubscribe function
 export function subscribeToProviders(
+  hospitalId: string,
   callback: (providers: Provider[]) => void
 ): Unsubscribe {
-  const providersRef = ref(db, PROVIDERS_PATH)
+  const providersRef = ref(db, `hospitals/${hospitalId}/providers`)
   return onValue(
     providersRef,
     (snapshot) => {
@@ -40,8 +39,8 @@ export function subscribeToProviders(
 }
 
 // One-time fetch
-export async function getProviders(): Promise<Provider[]> {
-  const providersRef = ref(db, PROVIDERS_PATH)
+export async function getProviders(hospitalId: string): Promise<Provider[]> {
+  const providersRef = ref(db, `hospitals/${hospitalId}/providers`)
   const snapshot = await get(providersRef)
   const data = snapshot.val()
   if (!data) return []
@@ -53,9 +52,10 @@ export async function getProviders(): Promise<Provider[]> {
 
 // Create — uses Firebase push() to generate ID
 export async function createProvider(
+  hospitalId: string,
   data: Omit<Provider, 'id' | 'createdAt'>
 ): Promise<Provider> {
-  const providersRef = ref(db, PROVIDERS_PATH)
+  const providersRef = ref(db, `hospitals/${hospitalId}/providers`)
   const newRef = push(providersRef)
   const id = newRef.key as string
   const createdAt = new Date().toISOString()
@@ -72,15 +72,16 @@ export async function createProvider(
 
 // Update — partial update, always sets updatedAt if field exists
 export async function updateProvider(
+  hospitalId: string,
   id: string,
   data: Partial<Omit<Provider, 'id' | 'createdAt'>>
 ): Promise<void> {
-  const providerRef = ref(db, PROVIDERS_PATH + '/' + id)
+  const providerRef = ref(db, `hospitals/${hospitalId}/providers/${id}`)
   await update(providerRef, data)
 }
 
 // Delete
-export async function deleteProvider(id: string): Promise<void> {
-  const providerRef = ref(db, PROVIDERS_PATH + '/' + id)
+export async function deleteProvider(hospitalId: string, id: string): Promise<void> {
+  const providerRef = ref(db, `hospitals/${hospitalId}/providers/${id}`)
   await remove(providerRef)
 }

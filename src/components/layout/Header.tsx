@@ -1,11 +1,14 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Bell, Search, Menu } from "lucide-react"
+import { Bell, Search, Menu, TerminalSquare } from "lucide-react"
 import { useAppStore } from "@/store/useAppStore"
 import { useAuth } from "@/hooks/useAuth"
+import { logoutUser } from "@/lib/services/authService"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { GlobalSearch } from "@/components/search/GlobalSearch"
 import {
@@ -16,13 +19,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/patients": "Patients",
+  "/analyse": "Document Analysis",
   "/scheduling": "Scheduling",
   "/providers": "Providers",
-  "/facilities": "Facilities",
+  "/facilities": "Hospitals",
+  "/staff": "Staff Management",
+  "/settings": "Settings",
+  "/console": "Developer Console",
+  "/console/flags": "Feature Flags",
+  "/console/db": "Database Explorer",
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  doctor: "Doctor",
+  receptionist: "Receptionist",
 }
 
 interface HeaderProps {
@@ -33,7 +50,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
   const currentUser = useAppStore((state) => state.currentUser)
-  const { signOut } = useAuth()
+  const hospitalName = useAppStore((state) => state.hospitalName)
+  const userRole = useAppStore((state) => state.userRole)
+  const clearSession = useAppStore((state) => state.clearSession)
+  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed)
   const [searchOpen, setSearchOpen] = useState(false)
 
   // Keyboard shortcut listener: Cmd+K / Ctrl+K
@@ -63,7 +83,8 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   const handleSignOut = async () => {
     try {
-      await signOut()
+      await logoutUser()
+      clearSession()
       router.push("/login")
     } catch {
       // Handled in auth hook
@@ -78,8 +99,15 @@ export function Header({ onMenuClick }: HeaderProps) {
     .slice(0, 2)
     .toUpperCase()
 
+  const roleLabel = (userRole && ROLE_LABELS[userRole]) || (currentUser?.role && ROLE_LABELS[currentUser.role]) || "Doctor"
+
   return (
-    <header className="fixed left-0 lg:left-[240px] right-0 top-0 z-30 flex h-14 items-center justify-between border-b bg-card px-4 lg:px-6">
+    <header
+      className={cn(
+        "fixed right-0 top-0 z-30 flex h-14 items-center justify-between border-b bg-card px-4 lg:px-6 transition-all duration-300 ease-in-out",
+        sidebarCollapsed ? "left-0 lg:left-16" : "left-0 lg:left-60"
+      )}
+    >
       {/* Left: Hamburger (below lg) + Page Title */}
       <div className="flex items-center gap-3">
         <Button
@@ -143,16 +171,38 @@ export function Header({ onMenuClick }: HeaderProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">
-                  {currentUser?.displayName || "Medical Staff"}
-                </p>
-                <p className="text-xs leading-none text-muted-foreground">
+              <div className="flex flex-col space-y-1.5">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-sm font-medium leading-none truncate">
+                    {currentUser?.displayName || "Medical Staff"}
+                  </p>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                    {roleLabel}
+                  </Badge>
+                </div>
+                <p className="text-xs leading-none text-muted-foreground truncate">
                   {currentUser?.email || "user@ehr.local"}
+                </p>
+                <p className="text-[11px] leading-none text-muted-foreground font-medium pt-0.5 truncate">
+                  {hospitalName || "Hospital"}
                 </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {userRole === 'dev' && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/console"
+                    className="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-200"
+                  >
+                    <TerminalSquare className="h-4 w-4 text-emerald-600" />
+                    <span>Developer Console</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem
               onClick={handleSignOut}
               className="text-destructive focus:text-destructive cursor-pointer"
@@ -165,3 +215,4 @@ export function Header({ onMenuClick }: HeaderProps) {
     </header>
   )
 }
+

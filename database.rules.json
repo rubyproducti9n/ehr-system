@@ -154,6 +154,52 @@
       }
     },
 
+    "dev": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "auditLog": {
+        "$logId": {
+          ".validate": "newData.hasChildren(['timestamp','documentType','patientId','performedBy'])"
+        }
+      },
+      "corrections": {
+        "$correctionId": {
+          ".validate": "newData.hasChildren(['auditLogId','fieldPath','correctedBy','correctedAt'])"
+        }
+      }
+    },
+
+    "hospitals": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'dev'",
+      ".write": "auth != null",
+      "$hospitalId": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId || root.child('users').child(auth.uid).child('role').val() === 'dev')",
+        ".write": "auth != null"
+      }
+    },
+
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "hospitalCodes": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+
+    "settings": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".validate": "true"
+    },
+
+    "devConsole": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'dev'",
+      "$other": { ".validate": "true" }
+    },
+
     "$other": {
       ".read": false,
       ".write": false

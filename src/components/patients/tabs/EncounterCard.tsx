@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -15,6 +15,7 @@ import { updateEncounter, deleteEncounter } from '@/lib/services/encounterServic
 import { useProviders } from '@/hooks/useProviders'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { useAppStore } from '@/store/useAppStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -141,13 +142,16 @@ export function EncounterCard({
     return Object.keys(newErrors).length === 0
   }
 
+  const hospitalId = useAppStore((state) => state.hospitalId)
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
+    if (!hospitalId) return
 
     setSaving(true)
     try {
-      await updateEncounter(patientId, encounter.id, {
+      await updateEncounter(hospitalId, patientId, encounter.id, {
         visitDate: new Date(visitDate).toISOString(),
         providerId,
         summary: summary.trim(),
@@ -172,9 +176,10 @@ export function EncounterCard({
   }
 
   const handleConfirmDelete = async () => {
+    if (!hospitalId) return
     setDeleting(true)
     try {
-      await deleteEncounter(patientId, encounter.id)
+      await deleteEncounter(hospitalId, patientId, encounter.id)
       toast({
         title: 'Encounter deleted',
         description: 'The encounter record has been permanently removed.',

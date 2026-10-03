@@ -17,6 +17,7 @@ import {
 import { Appointment } from '@/types'
 import { useAppointments } from '@/hooks/useAppointments'
 import { useFacilities } from '@/hooks/useFacilities'
+import { useAppStore } from '@/store/useAppStore'
 import {
   updateAppointmentStatus,
   deleteAppointment,
@@ -51,6 +52,7 @@ type QuickDateFilter = 'today' | 'week' | 'upcoming' | 'all' | 'custom'
 type StatusFilter = 'all' | 'scheduled' | 'completed' | 'cancelled'
 
 export default function SchedulingPage() {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { appointments, loading: appointmentsLoading, error } = useAppointments()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { toast } = useToast()
@@ -210,12 +212,19 @@ export default function SchedulingPage() {
   // Update Status action
   const handleStatusChange = async (apt: Appointment, status: Appointment['status']) => {
     if (apt.status === status) return
+    if (!hospitalId) return
     try {
-      await updateAppointmentStatus(apt.id, status)
+      const res = await updateAppointmentStatus(hospitalId, apt.id, status, apt)
       toast({
         title: 'Status updated',
         description: `Status updated to ${status}`,
       })
+      if (status === 'completed' && res.adtUpdated) {
+        toast({
+          title: 'Re-admit date set',
+          description: `ADT record updated with re-admit date: ${formatDateTime(apt.scheduledDate)}`,
+        })
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to update status'
       toast({
@@ -228,9 +237,10 @@ export default function SchedulingPage() {
 
   // Delete Appointment action
   const handleConfirmDelete = async (id: string) => {
+    if (!hospitalId) return
     setSubmittingDelete(true)
     try {
-      await deleteAppointment(id)
+      await deleteAppointment(hospitalId, id)
       toast({
         title: 'Appointment deleted',
         description: 'Appointment deleted',
@@ -408,7 +418,7 @@ export default function SchedulingPage() {
               <TableHead className="font-semibold">Date &amp; Time</TableHead>
               <TableHead className="font-semibold">Patient</TableHead>
               <TableHead className="font-semibold">Provider</TableHead>
-              <TableHead className="font-semibold">Facility</TableHead>
+              <TableHead className="font-semibold">Hospital</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Notes</TableHead>
               <TableHead className="text-right font-semibold">Actions</TableHead>

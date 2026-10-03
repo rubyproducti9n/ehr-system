@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Stethoscope, Loader2, FileText } from 'lucide-react'
+import { Plus, Stethoscope, Loader2, FileText, Lock } from 'lucide-react'
 import { useEncounters } from '@/hooks/useEncounters'
 import { useProviders } from '@/hooks/useProviders'
+import { useAppStore } from '@/store/useAppStore'
+import { hasPermission } from '@/lib/roles'
 import { createEncounter } from '@/lib/services/encounterService'
 import { updatePatient } from '@/lib/services/patientService'
 import { useToast } from '@/hooks/use-toast'
@@ -18,12 +20,26 @@ import { PageError } from '@/components/error/PageError'
 
 interface EncounterTabProps {
   patientId: string
+  showTranscript?: boolean
 }
 
-export function EncounterTab({ patientId }: EncounterTabProps) {
+export function EncounterTab({ patientId, showTranscript = true }: EncounterTabProps) {
+  const userRole = useAppStore((state) => state.userRole)
   const { encounters, loading: encLoading, error } = useEncounters(patientId)
   const { providers, loading: providersLoading } = useProviders()
   const { toast } = useToast()
+
+  // Role check: If cannot view clinical records, show Lock EmptyState
+  if (!hasPermission(userRole, 'canViewClinicalRecords')) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Access Restricted"
+        description="Your role does not have access to encounter records."
+      />
+    )
+  }
+
 
   // Inline New Encounter form visibility
   const [showNewForm, setShowNewForm] = useState(false)
@@ -83,16 +99,19 @@ export function EncounterTab({ patientId }: EncounterTabProps) {
     return Object.keys(newErrors).length === 0
   }
 
+  const hospitalId = useAppStore((state) => state.hospitalId)
+
   const handleCreateEncounter = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
+    if (!hospitalId) return
 
     setSaving(true)
     try {
       const isoVisitDate = new Date(visitDate).toISOString()
 
       // 1. Create Encounter
-      await createEncounter(patientId, {
+      await createEncounter(hospitalId, patientId, {
         patientId,
         visitDate: isoVisitDate,
         providerId,
@@ -101,7 +120,7 @@ export function EncounterTab({ patientId }: EncounterTabProps) {
       })
 
       // 2. Update parent patient lastVisitDate automatically
-      await updatePatient(patientId, { lastVisitDate: isoVisitDate })
+      await updatePatient(hospitalId, patientId, { lastVisitDate: isoVisitDate })
 
       toast({
         title: 'Encounter created',
@@ -269,21 +288,23 @@ export function EncounterTab({ patientId }: EncounterTabProps) {
                 )}
               </div>
 
-              <div className='space-y-1.5'>
-                <Label htmlFor='new-transcript'>Transcript</Label>
-                <textarea
-                  id='new-transcript'
-                  rows={4}
-                  placeholder='Paste or type the visit transcript here. AI transcription coming in a future update.'
-                  value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
-                  disabled={saving}
-                  className='flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-                />
-                <p className='text-xs text-muted-foreground italic'>
-                  AI-powered transcription will be available in Phase 2
-                </p>
-              </div>
+              {showTranscript && (
+                <div className='space-y-1.5'>
+                  <Label htmlFor='new-transcript'>Transcript</Label>
+                  <textarea
+                    id='new-transcript'
+                    rows={4}
+                    placeholder='Paste or type the visit transcript here. AI transcription coming in a future update.'
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    disabled={saving}
+                    className='flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+                  />
+                  <p className='text-xs text-muted-foreground italic'>
+                    AI-powered transcription will be available in Phase 2
+                  </p>
+                </div>
+              )}
             </form>
           </div>
         )}

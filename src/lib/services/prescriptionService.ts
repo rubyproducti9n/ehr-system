@@ -1,4 +1,4 @@
-﻿import {
+import {
   ref,
   push,
   set,
@@ -10,14 +10,13 @@
 import { db } from '@/lib/firebase'
 import { Prescription } from '@/types'
 
-const RX_PATH = 'prescriptions'
-
 // Realtime listener — returns unsubscribe function
 export function subscribeToPrescriptions(
+  hospitalId: string,
   patientId: string,
   callback: (prescriptions: Prescription[]) => void
 ): Unsubscribe {
-  const rxRef = ref(db, RX_PATH + '/' + patientId)
+  const rxRef = ref(db, `hospitals/${hospitalId}/prescriptions/${patientId}`)
   return onValue(
     rxRef,
     (snapshot) => {
@@ -40,12 +39,13 @@ export function subscribeToPrescriptions(
   )
 }
 
-// Create — uses push() to generate ID under /prescriptions/{patientId}
+// Create — uses push() to generate ID under /hospitals/{hospitalId}/prescriptions/{patientId}
 export async function createPrescription(
+  hospitalId: string,
   patientId: string,
   data: Omit<Prescription, 'id' | 'createdAt'>
 ): Promise<Prescription> {
-  const patientRxRef = ref(db, RX_PATH + '/' + patientId)
+  const patientRxRef = ref(db, `hospitals/${hospitalId}/prescriptions/${patientId}`)
   const newRef = push(patientRxRef)
   const id = newRef.key as string
   const createdAt = new Date().toISOString()
@@ -63,28 +63,31 @@ export async function createPrescription(
 
 // Update — partial update
 export async function updatePrescription(
+  hospitalId: string,
   patientId: string,
   prescriptionId: string,
   data: Partial<Omit<Prescription, 'id' | 'createdAt' | 'patientId'>>
 ): Promise<void> {
-  const rxRef = ref(db, RX_PATH + '/' + patientId + '/' + prescriptionId)
+  const rxRef = ref(db, `hospitals/${hospitalId}/prescriptions/${patientId}/${prescriptionId}`)
   await update(rxRef, data)
 }
 
 // Update Prescription Status
 export async function updatePrescriptionStatus(
+  hospitalId: string,
   patientId: string,
   prescriptionId: string,
   status: Prescription['status']
 ): Promise<void> {
-  await updatePrescription(patientId, prescriptionId, { status })
+  await updatePrescription(hospitalId, patientId, prescriptionId, { status })
 }
 
 // Delete
 export async function deletePrescription(
+  hospitalId: string,
   patientId: string,
   prescriptionId: string
 ): Promise<void> {
-  const rxRef = ref(db, RX_PATH + '/' + patientId + '/' + prescriptionId)
+  const rxRef = ref(db, `hospitals/${hospitalId}/prescriptions/${patientId}/${prescriptionId}`)
   await remove(rxRef)
 }

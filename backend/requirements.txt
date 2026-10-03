@@ -1,0 +1,25 @@
+# INSTALL ORDER MATTERS — read before running pip install
+#
+# Step 1: Install llama-cpp-python with CUDA support for GTX 1650:
+#   Windows (CUDA 12.x):
+#   set CMAKE_ARGS="-DLLAMA_CUDA=on"
+#   pip install llama-cpp-python==0.2.90 --no-cache-dir
+#
+#   If CUDA build fails, fall back to CPU-only:
+#   pip install llama-cpp-python==0.2.90
+#
+# Step 2: Install remaining dependencies:
+#   pip install -r requirements.txt
+#
+# Step 3: Verify GPU is detected:
+#   python -c "from llama_cpp import Llama; print('llama-cpp-python OK')"
+
+llama-cpp-python==0.2.90
+fastapi==0.115.0
+uvicorn==0.30.6
+pydantic==2.9.2
+python-dotenv==1.0.1
+paddlepaddle==2.6.1
+paddleocr==2.7.3
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0

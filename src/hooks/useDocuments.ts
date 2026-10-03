@@ -1,22 +1,25 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { Document } from '@/types'
 import { subscribeToDocuments } from '@/lib/services/documentService'
+import { useAppStore } from '@/store/useAppStore'
 
 export function useDocuments(patientId: string): {
   documents: Document[]
   loading: boolean
   error: string | null
 } {
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!patientId) {
+    if (!hospitalId || !patientId) {
       setDocuments([])
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -26,7 +29,7 @@ export function useDocuments(patientId: string): {
     let unsubscribe: () => void = () => {}
 
     try {
-      unsubscribe = subscribeToDocuments(patientId, (data) => {
+      unsubscribe = subscribeToDocuments(hospitalId, patientId, (data) => {
         // Sort by uploadedAt descending
         const sorted = [...data].sort((a, b) => {
           const timeA = new Date(a.uploadedAt || 0).getTime()
@@ -36,8 +39,9 @@ export function useDocuments(patientId: string): {
         setDocuments(sorted)
         setLoading(false)
       })
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load documents')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load documents'
+      setError(message)
       setLoading(false)
     }
 
@@ -46,7 +50,7 @@ export function useDocuments(patientId: string): {
         unsubscribe()
       }
     }
-  }, [patientId])
+  }, [hospitalId, patientId])
 
   return { documents, loading, error }
 }

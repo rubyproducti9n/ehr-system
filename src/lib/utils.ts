@@ -58,3 +58,42 @@ export function getInitials(name: string): string {
   if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'P'
   return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase()
 }
+
+// Validates phone number (7-15 digits after stripping formatting)
+export function validatePhone(phone: string): string | null {
+  const stripped = phone.replace(/[\s\-()+]/g, '')
+  if (!/^\d{7,15}$/.test(stripped)) {
+    return 'Enter a valid phone number (7–15 digits)'
+  }
+  return null
+}
+
+// Validates email address format
+export function validateEmail(email: string): string | null {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(email.trim())) {
+    return 'Enter a valid email address'
+  }
+  return null
+}
+
+// Smart Dr. prefix detection and title-casing for provider names
+export function addDrPrefix(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return ''
+
+  const prefixRegex = /^(dr\.|dr\s+|doctor\s+)/i
+  let rest = trimmed
+  if (prefixRegex.test(trimmed)) {
+    rest = trimmed.replace(prefixRegex, '').trim()
+  }
+
+  const titleCased = rest
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+
+  return `Dr. ${titleCased}`
+}
+

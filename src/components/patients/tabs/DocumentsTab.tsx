@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Plus,
   Edit,
@@ -12,6 +13,8 @@ import {
   FlaskConical,
   FileText,
   Filter,
+  Sparkles,
+  Eye,
 } from 'lucide-react'
 import { Document } from '@/types'
 import { useDocuments } from '@/hooks/useDocuments'
@@ -19,7 +22,11 @@ import { deleteDocument } from '@/lib/services/documentService'
 import { DOCUMENT_TYPES, DocumentTypeKey } from '@/lib/documentTypes'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { useAppStore } from '@/store/useAppStore'
+import { isDeveloper } from '@/lib/devAccess'
+import { hasPermission } from '@/lib/roles'
 import { DocumentDialog } from './DocumentDialog'
+import { DocumentAnalysisSheet } from './DocumentAnalysisSheet'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -51,13 +58,21 @@ function getDocumentIcon(iconName: string, className?: string) {
 
 function DocumentCard({
   doc,
+  patientId,
   onEdit,
   onDelete,
+  onAnalyse,
 }: {
   doc: Document
+  patientId: string
   onEdit: () => void
   onDelete: (id: string) => Promise<void>
+  onAnalyse: () => void
 }) {
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
+  const appSettings = useAppStore((state) => state.appSettings)
+  const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -65,9 +80,20 @@ function DocumentCard({
     DOCUMENT_TYPES[doc.documentType as DocumentTypeKey] ||
     DOCUMENT_TYPES.other
 
+  const isStoredFile =
+    Boolean(doc.fileUrl) &&
+    Boolean(appSettings?.storageLocation) &&
+    doc.fileUrl.startsWith(appSettings!.storageLocation!)
+
   const isWebUrl =
     doc.fileUrl &&
-    (doc.fileUrl.startsWith('http://') || doc.fileUrl.startsWith('https://'))
+    (doc.fileUrl.startsWith('http://') || doc.fileUrl.startsWith('https://')) &&
+    !isStoredFile
+
+  const filename = doc.fileUrl ? doc.fileUrl.split(/[\/\\]/).pop() : ''
+  const staticFileUrl = filename
+    ? `http://127.0.0.1:8765/patient-docs/${patientId}/${filename}`
+    : ''
 
   const handleConfirm = async () => {
     setDeleting(true)
@@ -168,29 +194,50 @@ function DocumentCard({
           </div>
         )}
 
-        {/* Reference / URL (if present) */}
-        {doc.fileUrl && doc.fileUrl.trim().length > 0 && (
-          <div className='space-y-0.5 pt-0.5'>
-            <span className='text-[11px] font-medium text-muted-foreground uppercase tracking-wider block'>
-              Reference:
-            </span>
-            {isWebUrl ? (
-              <a
-                href={doc.fileUrl}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline break-all'
-              >
-                <span>{doc.fileUrl}</span>
-                <ExternalLink className='h-3 w-3 shrink-0' />
+        {/* Reference / File View & AI Actions */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {isStoredFile && staticFileUrl ? (
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-xs gap-1.5 border-primary/40 bg-background/80 hover:bg-primary/10 text-primary font-medium"
+            >
+              <a href={staticFileUrl} target="_blank" rel="noopener noreferrer">
+                <Eye className="h-3.5 w-3.5" />
+                View File
+                <ExternalLink className="h-2.5 w-2.5 opacity-60" />
               </a>
-            ) : (
-              <span className='text-xs font-mono text-foreground break-all bg-background/70 px-2 py-1 rounded border border-border/40 inline-block'>
-                {doc.fileUrl}
-              </span>
-            )}
-          </div>
-        )}
+            </Button>
+          ) : isWebUrl ? (
+            <a
+              href={doc.fileUrl}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline break-all'
+            >
+              <span>{doc.fileUrl}</span>
+              <ExternalLink className='h-3 w-3 shrink-0' />
+            </a>
+          ) : doc.fileUrl && doc.fileUrl.trim().length > 0 ? (
+            <span className='text-xs font-mono text-foreground break-all bg-background/70 px-2 py-1 rounded border border-border/40 inline-block'>
+              {doc.fileUrl}
+            </span>
+          ) : null}
+
+          {/* Analyse with AI button */}
+          {hasPermission(userRole, 'canUseAiFeatures') && isFeatureEnabled('ai_document_analysis') && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onAnalyse}
+              className="h-7 px-2.5 text-xs gap-1.5 text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 font-medium cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+              Analyse with AI
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Footer Meta */}
@@ -204,14 +251,38 @@ function DocumentCard({
 }
 
 export function DocumentsTab({ patientId }: DocumentsTabProps) {
+  const router = useRouter()
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
+  const appSettings = useAppStore((state) => state.appSettings)
+  const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
   const { documents, loading, error } = useDocuments(patientId)
   const { toast } = useToast()
 
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<Document | undefined>(
     undefined
   )
+  const [analysisSheet, setAnalysisSheet] = useState<{
+    open: boolean
+    document: Document | null
+  }>({ open: false, document: null })
+
+  const handleAnalyse = (doc: Document) => {
+    const mode = appSettings?.extractionMode ?? 'online'
+
+    if (mode === 'online') {
+      const encodedFileUrl = encodeURIComponent(doc.fileUrl || '')
+      router.push(`/analyse?documentId=${doc.id}&patientId=${patientId}&fileUrl=${encodedFileUrl}`)
+    } else if (mode === 'offline') {
+      setAnalysisSheet({ open: true, document: doc })
+    } else {
+      const encodedFileUrl = encodeURIComponent(doc.fileUrl || '')
+      router.push(`/analyse?documentId=${doc.id}&patientId=${patientId}&fileUrl=${encodedFileUrl}`)
+    }
+  }
 
   // Compute counts per category
   const counts = useMemo(() => {
@@ -252,8 +323,9 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
   }
 
   const handleDelete = async (id: string) => {
+    if (!hospitalId) return
     try {
-      await deleteDocument(patientId, id)
+      await deleteDocument(hospitalId, patientId, id)
       toast({
         title: 'Document deleted',
         description: 'Document deleted',
@@ -283,10 +355,17 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
           <span className='text-sm font-medium text-muted-foreground'>
             Documents
           </span>
-          <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
-            <Plus className='h-4 w-4' />
-            Add Document
-          </Button>
+          {isFeatureEnabled('patient_document_upload') ? (
+            <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
+              <Plus className='h-4 w-4' />
+              Add Document
+            </Button>
+          ) : (
+            <Button disabled size='sm' className='gap-1.5 opacity-60'>
+              <Plus className='h-4 w-4' />
+              Uploads Disabled
+            </Button>
+          )}
         </div>
 
         {/* Type Filter Pills */}
@@ -396,8 +475,10 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
                 <DocumentCard
                   key={doc.id}
                   doc={doc}
+                  patientId={patientId}
                   onEdit={() => handleOpenEdit(doc)}
                   onDelete={handleDelete}
+                  onAnalyse={() => handleAnalyse(doc)}
                 />
               ))}
             </div>
@@ -411,6 +492,18 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
         />
+
+        {/* AI Document Analysis Sheet */}
+        {analysisSheet.document && (
+          <DocumentAnalysisSheet
+            open={analysisSheet.open}
+            onOpenChange={(open) =>
+              setAnalysisSheet((s) => ({ ...s, open }))
+            }
+            document={analysisSheet.document}
+            patientId={patientId}
+          />
+        )}
       </div>
     </ErrorBoundary>
   )
