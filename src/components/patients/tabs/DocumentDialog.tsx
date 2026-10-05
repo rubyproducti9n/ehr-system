@@ -63,6 +63,7 @@ export function DocumentDialog({
   const currentUser = useAppStore((state) => state.currentUser)
   const appSettings = useAppStore((state) => state.appSettings)
   const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
 
   // Step 1 vs Step 2 for multi-file upload
   const [step, setStep] = useState<1 | 2>(1)
@@ -302,10 +303,17 @@ export function DocumentDialog({
           firstSavedDoc = created
         }
 
+        const canAutoAnalyse =
+          isFeatureVisible('auto_analyse_on_upload') &&
+          isFeatureEnabled('auto_analyse_on_upload') &&
+          isFeatureVisible('ai_document_analysis') &&
+          isFeatureEnabled('ai_document_analysis') &&
+          isFeatureVisible('gemini_online_extraction') &&
+          isFeatureEnabled('gemini_online_extraction')
+
         const shouldAnalyse =
           autoAnalyse &&
-          isFeatureEnabled('auto_analyse_on_upload') &&
-          isFeatureEnabled('ai_document_analysis') &&
+          canAutoAnalyse &&
           firstSavedDoc &&
           Boolean(firstSavedDoc.fileUrl)
 
@@ -570,7 +578,13 @@ export function DocumentDialog({
               </div>
 
               {/* Auto-Analyse on Upload Feature Flag Controlled Section */}
-              {!isEdit && isFeatureEnabled('auto_analyse_on_upload') && isFeatureEnabled('ai_document_analysis') && (
+              {!isEdit &&
+                isFeatureVisible('auto_analyse_on_upload') &&
+                isFeatureEnabled('auto_analyse_on_upload') &&
+                isFeatureVisible('ai_document_analysis') &&
+                isFeatureEnabled('ai_document_analysis') &&
+                isFeatureVisible('gemini_online_extraction') &&
+                isFeatureEnabled('gemini_online_extraction') && (
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 dark:bg-indigo-950/30 p-3.5 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">

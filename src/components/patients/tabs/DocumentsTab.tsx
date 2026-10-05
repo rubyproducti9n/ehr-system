@@ -73,8 +73,12 @@ function DocumentCard({
   const userRole = useAppStore((state) => state.userRole)
   const appSettings = useAppStore((state) => state.appSettings)
   const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const showGemini = isFeatureVisible('gemini_online_extraction')
+  const showLocal = isFeatureVisible('local_ai_extraction')
 
   const typeConfig =
     DOCUMENT_TYPES[doc.documentType as DocumentTypeKey] ||
@@ -226,7 +230,10 @@ function DocumentCard({
           ) : null}
 
           {/* Analyse with AI button */}
-          {hasPermission(userRole, 'canUseAiFeatures') && isFeatureEnabled('ai_document_analysis') && (
+          {hasPermission(userRole, 'canUseAiFeatures') &&
+            isFeatureVisible('ai_document_analysis') &&
+            isFeatureEnabled('ai_document_analysis') &&
+            (showGemini || showLocal) && (
             <Button
               size="sm"
               variant="secondary"
@@ -256,6 +263,7 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
   const userRole = useAppStore((state) => state.userRole)
   const appSettings = useAppStore((state) => state.appSettings)
   const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
   const { documents, loading, error } = useDocuments(patientId)
   const { toast } = useToast()
 
@@ -271,16 +279,50 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
   }>({ open: false, document: null })
 
   const handleAnalyse = (doc: Document) => {
-    const mode = appSettings?.extractionMode ?? 'online'
+    const canUseGemini = isFeatureVisible('gemini_online_extraction') && isFeatureEnabled('gemini_online_extraction')
+    const canUseLocal = isFeatureVisible('local_ai_extraction') && isFeatureEnabled('local_ai_extraction')
 
-    if (mode === 'online') {
+    if (!canUseGemini && !canUseLocal) {
+      toast({
+        title: 'AI Analysis Unavailable',
+        description: 'AI document analysis is currently disabled by your administrator.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const preferredMode = appSettings?.extractionMode ?? (canUseGemini ? 'online' : 'offline')
+    let effectiveMode = preferredMode
+
+    if (effectiveMode === 'online' && !canUseGemini) {
+      if (canUseLocal) {
+        effectiveMode = 'offline'
+      } else {
+        toast({
+          title: 'Cloud AI Disabled',
+          description: 'Cloud AI document extraction has been disabled by your administrator.',
+          variant: 'destructive',
+        })
+        return
+      }
+    } else if (effectiveMode === 'offline' && !canUseLocal) {
+      if (canUseGemini) {
+        effectiveMode = 'online'
+      } else {
+        toast({
+          title: 'Local AI Disabled',
+          description: 'Local AI extraction has been disabled by your administrator.',
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
+    if (effectiveMode === 'online') {
       const encodedFileUrl = encodeURIComponent(doc.fileUrl || '')
       router.push(`/analyse?documentId=${doc.id}&patientId=${patientId}&fileUrl=${encodedFileUrl}`)
-    } else if (mode === 'offline') {
-      setAnalysisSheet({ open: true, document: doc })
     } else {
-      const encodedFileUrl = encodeURIComponent(doc.fileUrl || '')
-      router.push(`/analyse?documentId=${doc.id}&patientId=${patientId}&fileUrl=${encodedFileUrl}`)
+      setAnalysisSheet({ open: true, document: doc })
     }
   }
 
@@ -355,16 +397,18 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
           <span className='text-sm font-medium text-muted-foreground'>
             Documents
           </span>
-          {isFeatureEnabled('patient_document_upload') ? (
-            <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
-              <Plus className='h-4 w-4' />
-              Add Document
-            </Button>
-          ) : (
-            <Button disabled size='sm' className='gap-1.5 opacity-60'>
-              <Plus className='h-4 w-4' />
-              Uploads Disabled
-            </Button>
+          {isFeatureVisible('patient_document_upload') && (
+            isFeatureEnabled('patient_document_upload') ? (
+              <Button onClick={handleOpenAdd} size='sm' className='gap-1.5'>
+                <Plus className='h-4 w-4' />
+                Add Document
+              </Button>
+            ) : (
+              <Button disabled size='sm' className='gap-1.5 opacity-60'>
+                <Plus className='h-4 w-4' />
+                Uploads Disabled
+              </Button>
+            )
           )}
         </div>
 

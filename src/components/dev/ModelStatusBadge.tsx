@@ -23,7 +23,11 @@ export function ModelStatusBadge({
 }: ModelStatusBadgeProps) {
   const currentUser = useAppStore((state) => state.currentUser)
   const userRole = useAppStore((state) => state.userRole)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
   const [status, setStatus] = useState<Status>('checking')
+
+  const showLocal = !hideLocalStatus && isFeatureVisible('local_ai_extraction')
+  const showGemini = (showGeminiStatus || hideLocalStatus) && isFeatureVisible('gemini_online_extraction')
 
   const email = currentUser?.email
   const developer = isDeveloper(email, userRole)
@@ -144,10 +148,6 @@ export function ModelStatusBadge({
     </div>
   )
 
-  if (hideLocalStatus) {
-    return geminiBadge
-  }
-
   const localBadge = (
     <div
       className={cn('inline-flex items-center gap-1.5 font-medium', textSizeClasses)}
@@ -207,15 +207,23 @@ export function ModelStatusBadge({
     </div>
   )
 
-  if (!showGeminiStatus) {
+  if (showLocal && showGemini) {
+    return (
+      <div className="inline-flex items-center gap-2">
+        {localBadge}
+        <span className="h-3.5 w-px bg-border" />
+        {geminiBadge}
+      </div>
+    )
+  }
+
+  if (showLocal) {
     return localBadge
   }
 
-  return (
-    <div className="inline-flex items-center gap-2">
-      {localBadge}
-      <span className="h-3.5 w-px bg-border" />
-      {geminiBadge}
-    </div>
-  )
+  if (showGemini) {
+    return geminiBadge
+  }
+
+  return null
 }

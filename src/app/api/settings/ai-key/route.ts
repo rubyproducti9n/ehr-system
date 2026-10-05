@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const BACKEND_URL = 'http://127.0.0.1:8765'
+import { setGeminiApiKey, clearGeminiApiKey } from '@/lib/gemini'
 
 export async function POST(req: NextRequest) {
   const email = req.headers.get('x-user-email')
@@ -11,25 +10,26 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
+    const apiKey = (body.api_key || '').trim()
 
-    if (!body.api_key || typeof body.api_key !== 'string') {
-      return NextResponse.json({ error: 'API key is required' }, { status: 400 })
+    if (!apiKey || apiKey.length < 15) {
+      return NextResponse.json(
+        { error: 'API key too short. Please enter a valid API key from Google AI Studio.' },
+        { status: 400 }
+      )
     }
 
-    const res = await fetch(`${BACKEND_URL}/gemini/configure-key`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: body.api_key.trim() }),
-      signal: AbortSignal.timeout(10_000),
-    })
+    setGeminiApiKey(apiKey)
 
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(
+      { success: true, message: 'AI API key saved successfully.' },
+      { status: 200 }
+    )
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json(
-      { error: `AI service configuration unreachable: ${message}` },
-      { status: 503 }
+      { error: `AI service configuration error: ${message}` },
+      { status: 500 }
     )
   }
 }
@@ -42,19 +42,13 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    const res = await fetch(`${BACKEND_URL}/gemini/clear-key`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(10_000),
-    })
-
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    clearGeminiApiKey()
+    return NextResponse.json({ success: true, message: 'API key cleared successfully.' }, { status: 200 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json(
-      { error: `AI service clear key unreachable: ${message}` },
-      { status: 503 }
+      { error: `Failed to clear API key: ${message}` },
+      { status: 500 }
     )
   }
 }

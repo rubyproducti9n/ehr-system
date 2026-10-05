@@ -130,6 +130,7 @@ function AnalyseContent() {
   const hospitalId = useAppStore((state) => state.hospitalId)
   const appSettings = useAppStore((state) => state.appSettings)
   const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
   const { patients, loading: patientsLoading } = usePatients()
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -470,13 +471,29 @@ function AnalyseContent() {
     }
   }
 
-  if (!isFeatureEnabled('ai_document_analysis')) {
+  if (!isFeatureVisible('ai_document_analysis') || !isFeatureEnabled('ai_document_analysis')) {
     return (
       <div className="py-12">
         <EmptyState
           icon={Lock}
           title="Feature Disabled"
-          description="This feature has been disabled by your administrator."
+          description="AI document analysis has been disabled by your administrator."
+        />
+      </div>
+    )
+  }
+
+  if (!isFeatureVisible('gemini_online_extraction') || !isFeatureEnabled('gemini_online_extraction')) {
+    return (
+      <div className="py-12">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Cloud AI Analysis Disabled"
+          description="Cloud AI document extraction has been disabled by your administrator."
+          action={{
+            label: "Back to Patients",
+            href: "/patients"
+          }}
         />
       </div>
     )

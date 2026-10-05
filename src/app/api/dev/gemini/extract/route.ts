@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isDeveloper } from '@/lib/devAccess'
-
-const BACKEND_URL = 'http://127.0.0.1:8765'
+import { extractGeminiClinicalData, DEFAULT_GEMINI_MODEL } from '@/lib/gemini'
 
 export async function POST(req: NextRequest) {
   const email = req.headers.get('x-user-email')
@@ -12,27 +10,37 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
+    const { image_base64, mime_type, model } = body
 
-    const res = await fetch(`${BACKEND_URL}/gemini/extract`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(90_000), // 90 seconds
-    })
+    if (!image_base64) {
+      return NextResponse.json(
+        { success: false, error: 'image_base64 is required' },
+        { status: 400 }
+      )
+    }
 
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    const result = await extractGeminiClinicalData(
+      image_base64,
+      mime_type || 'image/jpeg',
+      model || DEFAULT_GEMINI_MODEL
+    )
+
+    if (!result.success) {
+      return NextResponse.json(result, { status: 200 })
+    }
+
+    return NextResponse.json(result, { status: 200 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     if (message.includes('abort') || message.includes('timeout')) {
       return NextResponse.json(
-        { error: 'Gemini extraction timed out' },
+        { success: false, error: 'Gemini extraction timed out' },
         { status: 504 }
       )
     }
     return NextResponse.json(
-      { error: `Gemini backend unreachable: ${message}` },
-      { status: 503 }
+      { success: false, error: `Gemini extraction failed: ${message}` },
+      { status: 500 }
     )
   }
 }

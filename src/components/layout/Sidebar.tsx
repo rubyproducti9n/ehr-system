@@ -245,24 +245,26 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
               <Separator className="my-2" />
               {collapsed ? (
                 <>
-                  <div className="flex justify-center">
-                    <Tooltip content="Dev Sandbox" side="right">
-                      <Link
-                        href="/dev"
-                        onClick={() => {
-                          if (onMobileOpenChange) onMobileOpenChange(false)
-                        }}
-                        className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors mx-auto cursor-pointer",
-                          "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
-                          (pathname === "/dev" || pathname === "/dev/ai-docs") &&
-                            "bg-amber-100 dark:bg-amber-900/40"
-                        )}
-                      >
-                        <Wrench className="h-4 w-4 shrink-0" />
-                      </Link>
-                    </Tooltip>
-                  </div>
+                  {isFeatureVisible('local_ai_extraction') && (
+                    <div className="flex justify-center">
+                      <Tooltip content="Dev Sandbox" side="right">
+                        <Link
+                          href="/dev"
+                          onClick={() => {
+                            if (onMobileOpenChange) onMobileOpenChange(false)
+                          }}
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors mx-auto cursor-pointer",
+                            "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
+                            (pathname === "/dev" || pathname === "/dev/ai-docs") &&
+                              "bg-amber-100 dark:bg-amber-900/40"
+                          )}
+                        >
+                          <Wrench className="h-4 w-4 shrink-0" />
+                        </Link>
+                      </Tooltip>
+                    </div>
+                  )}
                   <div className="flex justify-center mt-1">
                     <Tooltip content="Corrections" side="right">
                       <Link
@@ -281,42 +283,46 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
                       </Link>
                     </Tooltip>
                   </div>
-                  <div className="flex justify-center mt-1">
-                    <Tooltip content="Gemini Extract" side="right">
-                      <Link
-                        href="/dev/gemini"
-                        onClick={() => {
-                          if (onMobileOpenChange) onMobileOpenChange(false)
-                        }}
-                        className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors mx-auto cursor-pointer",
-                          "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
-                          pathname === "/dev/gemini" &&
-                            "bg-amber-100 dark:bg-amber-900/40"
-                        )}
-                      >
-                        <Sparkles className="h-4 w-4 shrink-0" />
-                      </Link>
-                    </Tooltip>
-                  </div>
+                  {isFeatureVisible('gemini_online_extraction') && (
+                    <div className="flex justify-center mt-1">
+                      <Tooltip content="Gemini Extract" side="right">
+                        <Link
+                          href="/dev/gemini"
+                          onClick={() => {
+                            if (onMobileOpenChange) onMobileOpenChange(false)
+                          }}
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors mx-auto cursor-pointer",
+                            "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
+                            pathname === "/dev/gemini" &&
+                              "bg-amber-100 dark:bg-amber-900/40"
+                          )}
+                        >
+                          <Sparkles className="h-4 w-4 shrink-0" />
+                        </Link>
+                      </Tooltip>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
-                  <Link
-                    href="/dev"
-                    onClick={() => {
-                      if (onMobileOpenChange) onMobileOpenChange(false)
-                    }}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
-                      "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
-                      (pathname === "/dev" || pathname === "/dev/ai-docs") &&
-                        "bg-amber-100 dark:bg-amber-900/40"
-                    )}
-                  >
-                    <Wrench className="h-4 w-4 shrink-0" />
-                    <span>Dev Sandbox</span>
-                  </Link>
+                  {isFeatureVisible('local_ai_extraction') && (
+                    <Link
+                      href="/dev"
+                      onClick={() => {
+                        if (onMobileOpenChange) onMobileOpenChange(false)
+                      }}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
+                        "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
+                        (pathname === "/dev" || pathname === "/dev/ai-docs") &&
+                          "bg-amber-100 dark:bg-amber-900/40"
+                      )}
+                    >
+                      <Wrench className="h-4 w-4 shrink-0" />
+                      <span>Dev Sandbox</span>
+                    </Link>
+                  )}
                   <Link
                     href="/dev/corrections"
                     onClick={() => {
@@ -332,21 +338,23 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
                     <Activity className="h-4 w-4 shrink-0" />
                     <span>Corrections</span>
                   </Link>
-                  <Link
-                    href="/dev/gemini"
-                    onClick={() => {
-                      if (onMobileOpenChange) onMobileOpenChange(false)
-                    }}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
-                      "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
-                      pathname === "/dev/gemini" &&
-                        "bg-amber-100 dark:bg-amber-900/40"
-                    )}
-                  >
-                    <Sparkles className="h-4 w-4 shrink-0" />
-                    <span>Gemini Extract</span>
-                  </Link>
+                  {isFeatureVisible('gemini_online_extraction') && (
+                    <Link
+                      href="/dev/gemini"
+                      onClick={() => {
+                        if (onMobileOpenChange) onMobileOpenChange(false)
+                      }}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
+                        "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40",
+                        pathname === "/dev/gemini" &&
+                          "bg-amber-100 dark:bg-amber-900/40"
+                      )}
+                    >
+                      <Sparkles className="h-4 w-4 shrink-0" />
+                      <span>Gemini Extract</span>
+                    </Link>
+                  )}
                 </>
               )}
             </>

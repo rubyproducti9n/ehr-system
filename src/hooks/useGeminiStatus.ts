@@ -8,13 +8,14 @@ export interface GeminiStatus {
   keyPreview: string | null
   model: string | null
   supportedModels?: string[]
+  refetch?: () => Promise<void>
 }
 
 export function useGeminiStatus(
   userEmail?: string | null,
   userRole?: string | null
 ): GeminiStatus {
-  const [geminiState, setGeminiState] = useState<GeminiStatus>({
+  const [geminiState, setGeminiState] = useState<Omit<GeminiStatus, 'refetch'>>({
     status: 'checking',
     configured: false,
     keyPreview: null,
@@ -50,7 +51,7 @@ export function useGeminiStatus(
 
       if (!res.ok) {
         setGeminiState({
-          status: 'offline',
+          status: 'key-missing',
           configured: false,
           keyPreview: null,
           model: null,
@@ -79,7 +80,7 @@ export function useGeminiStatus(
       }
     } catch {
       setGeminiState({
-        status: 'offline',
+        status: 'key-missing',
         configured: false,
         keyPreview: null,
         model: null,
@@ -95,15 +96,19 @@ export function useGeminiStatus(
         configured: false,
         keyPreview: null,
         model: null,
+        supportedModels: [],
       })
       return
     }
 
     checkStatus()
-    const interval = setInterval(checkStatus, 60_000)
+    const interval = setInterval(checkStatus, 30_000)
 
     return () => clearInterval(interval)
   }, [checkStatus, userEmail, userRole])
 
-  return geminiState
+  return {
+    ...geminiState,
+    refetch: checkStatus,
+  }
 }

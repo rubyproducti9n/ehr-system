@@ -96,7 +96,12 @@ export default function SettingsPage() {
   const hospitalCode = useAppStore((state) => state.hospitalCode)
   const setHospitalName = useAppStore((state) => state.setHospitalName)
   const appSettings = useAppStore((state) => state.appSettings)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
+  const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
   const { toast } = useToast()
+
+  const showLocalAi = isFeatureVisible('local_ai_extraction')
+  const showGeminiOnline = isFeatureVisible('gemini_online_extraction')
 
   const developer = isDeveloper(currentUser?.email, userRole)
   const gemini = useGeminiStatus(currentUser?.email, userRole)
@@ -192,6 +197,7 @@ export default function SettingsPage() {
 
       setApiKeyInput('')
       setIsEditingKey(false)
+      await gemini.refetch?.()
       toast({
         title: 'API key saved',
         description: 'AI service key configured successfully.',
@@ -230,6 +236,7 @@ export default function SettingsPage() {
       }
 
       setIsEditingKey(false)
+      await gemini.refetch?.()
       toast({
         title: 'API key removed',
         description: 'The API key has been cleared.',
@@ -617,147 +624,157 @@ export default function SettingsPage() {
           </Card>
 
           {/* Section 2: Extraction Mode */}
-          <Card>
-            <CardHeader className="border-b pb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base font-semibold">
-                  Extraction Mode
-                </CardTitle>
-              </div>
-              <CardDescription className="text-xs text-muted-foreground">
-                Choose how patient documents are analysed. Online uses cloud AI for high accuracy. Offline uses on-device local AI.
-              </CardDescription>
-            </CardHeader>
+          {(showLocalAi || showGeminiOnline) && (
+            <Card>
+              <CardHeader className="border-b pb-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-base font-semibold">
+                    Extraction Mode
+                  </CardTitle>
+                </div>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Choose how patient documents are analysed. Online uses cloud AI for high accuracy. Offline uses on-device local AI.
+                </CardDescription>
+              </CardHeader>
 
-            <CardContent className="pt-6 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Option 1 — Offline (Local AI) */}
-                <div
-                  onClick={() => {
-                    if (isLocalReady && currentMode !== 'offline' && !savingMode) {
-                      handleModeChange('offline')
-                    }
-                  }}
-                  className={cn(
-                    'relative flex flex-col justify-between rounded-xl border p-4 transition-all',
-                    isLocalReady
-                      ? currentMode === 'offline'
-                        ? 'border-primary bg-primary/5 cursor-default'
-                        : 'border-border bg-card hover:border-primary/50 hover:bg-muted/30 cursor-pointer'
-                      : 'border-border/60 bg-muted/40 opacity-75 cursor-not-allowed select-none'
-                  )}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Cpu className={cn('h-5 w-5', isLocalReady && currentMode === 'offline' ? 'text-primary' : 'text-muted-foreground')} />
-                        <span className="text-sm font-semibold text-foreground">Offline (Local AI)</span>
+              <CardContent className="pt-6 space-y-5">
+                <div className={cn(
+                  'grid gap-4',
+                  showLocalAi && showGeminiOnline ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
+                )}>
+                  {/* Option 1 — Offline (Local AI) */}
+                  {showLocalAi && (
+                    <div
+                      onClick={() => {
+                        if (isLocalReady && currentMode !== 'offline' && !savingMode) {
+                          handleModeChange('offline')
+                        }
+                      }}
+                      className={cn(
+                        'relative flex flex-col justify-between rounded-xl border p-4 transition-all',
+                        isLocalReady
+                          ? currentMode === 'offline'
+                            ? 'border-primary bg-primary/5 cursor-default'
+                            : 'border-border bg-card hover:border-primary/50 hover:bg-muted/30 cursor-pointer'
+                          : 'border-border/60 bg-muted/40 opacity-75 cursor-not-allowed select-none'
+                      )}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Cpu className={cn('h-5 w-5', isLocalReady && currentMode === 'offline' ? 'text-primary' : 'text-muted-foreground')} />
+                            <span className="text-sm font-semibold text-foreground">Offline (Local AI)</span>
+                          </div>
+                          {isLocalReady ? (
+                            currentMode === 'offline' ? (
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                Compatible
+                              </Badge>
+                            )
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-medium">
+                              Not supported on your device
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {isLocalReady
+                            ? `Runs local AI on-device (${localHardwareSummary}). Zero external network transmission.`
+                            : isLocalOffline
+                            ? 'Local AI background service is not running on this device.'
+                            : !isHardwareSupported
+                            ? `Device does not meet minimum specs (Ryzen 7 / i7+, 16GB RAM, 8GB VRAM). Detected: ${localHardwareSummary || 'Insufficient resources'}.`
+                            : 'Hardware is capable, but local AI model file (.gguf) is missing from disk.'}
+                        </p>
                       </div>
-                      {isLocalReady ? (
-                        currentMode === 'offline' ? (
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            Compatible
+                      <div className="pt-3">
+                        {isLocalReady ? (
+                          <Badge variant="secondary" className="text-[10px] font-medium text-foreground">
+                            {localHardwareSummary ? `Hardware: ${localHardwareSummary}` : 'Ready for on-device inference'}
                           </Badge>
-                        )
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-medium">
-                          Not supported on your device
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {isLocalReady
-                        ? `Runs local AI on-device (${localHardwareSummary}). Zero external network transmission.`
-                        : isLocalOffline
-                        ? 'Local AI background service is not running on this device.'
-                        : !isHardwareSupported
-                        ? `Device does not meet minimum specs (Ryzen 7 / i7+, 16GB RAM, 8GB VRAM). Detected: ${localHardwareSummary || 'Insufficient resources'}.`
-                        : 'Hardware is capable, but local AI model file (.gguf) is missing from disk.'}
-                    </p>
-                  </div>
-                  <div className="pt-3">
-                    {isLocalReady ? (
-                      <Badge variant="secondary" className="text-[10px] font-medium text-foreground">
-                        {localHardwareSummary ? `Hardware: ${localHardwareSummary}` : 'Ready for on-device inference'}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px] font-medium text-amber-800 bg-amber-100/70 dark:bg-amber-950/50 dark:text-amber-300">
-                        {isLocalOffline
-                          ? 'Local Engine Offline'
-                          : !isHardwareSupported
-                          ? 'Requires Ryzen 7+, 16GB RAM, 8GB VRAM'
-                          : 'Model Weights Missing'}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Option 2 — Online */}
-                <div
-                  onClick={() => {
-                    if (currentMode !== 'online' && !savingMode) {
-                      handleModeChange('online')
-                    }
-                  }}
-                  className={cn(
-                    'relative flex flex-col justify-between rounded-xl border p-4 transition-all',
-                    currentMode === 'online' || !currentMode
-                      ? 'border-primary bg-primary/5 cursor-default'
-                      : 'border-border bg-card hover:border-primary/50 hover:bg-muted/30 cursor-pointer'
-                  )}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className={cn('h-5 w-5', currentMode === 'online' || !currentMode ? 'text-primary' : 'text-muted-foreground')} />
-                        <span className="text-sm font-semibold text-foreground">Online (Cloud AI)</span>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px] font-medium text-amber-800 bg-amber-100/70 dark:bg-amber-950/50 dark:text-amber-300">
+                            {isLocalOffline
+                              ? 'Local Engine Offline'
+                              : !isHardwareSupported
+                              ? 'Requires Ryzen 7+, 16GB RAM, 8GB VRAM'
+                              : 'Model Weights Missing'}
+                          </Badge>
+                        )}
                       </div>
-                      {(currentMode === 'online' || !currentMode) && (
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Uses cloud AI document analysis. Requires internet and configured API key. Fast and accurate.
-                    </p>
-                  </div>
-                  <div className="pt-3">
-                    <Badge variant="secondary" className="text-[10px] font-medium border-amber-300 text-amber-800 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300">
-                      Requires API key
-                    </Badge>
-                  </div>
-                </div>
-              </div>
+                  )}
 
-              {/* Status / Warning Messages below the cards */}
-              {currentMode === 'online' ? (
-                !gemini.configured ? (
+                  {/* Option 2 — Online */}
+                  {showGeminiOnline && (
+                    <div
+                      onClick={() => {
+                        if (currentMode !== 'online' && !savingMode) {
+                          handleModeChange('online')
+                        }
+                      }}
+                      className={cn(
+                        'relative flex flex-col justify-between rounded-xl border p-4 transition-all',
+                        currentMode === 'online' || !currentMode
+                          ? 'border-primary bg-primary/5 cursor-default'
+                          : 'border-border bg-card hover:border-primary/50 hover:bg-muted/30 cursor-pointer'
+                      )}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className={cn('h-5 w-5', currentMode === 'online' || !currentMode ? 'text-primary' : 'text-muted-foreground')} />
+                            <span className="text-sm font-semibold text-foreground">Online (Cloud AI)</span>
+                          </div>
+                          {(currentMode === 'online' || !currentMode) && (
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Uses cloud AI document analysis. Requires internet and configured API key. Fast and accurate.
+                        </p>
+                      </div>
+                      <div className="pt-3">
+                        <Badge variant="secondary" className="text-[10px] font-medium border-amber-300 text-amber-800 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300">
+                          Requires API key
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Status / Warning Messages below the cards */}
+                {currentMode === 'online' && showGeminiOnline ? (
+                  !gemini.configured ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <span>
+                        API key not configured. Online document analysis requires a configured API key below.
+                      </span>
+                    </div>
+                  ) : null
+                ) : currentMode === 'offline' && showLocalAi ? (
+                  <p className="text-xs text-muted-foreground">
+                    Local AI server must be running for offline extraction to work.
+                  </p>
+                ) : (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <span>
-                      API key not configured. Online document analysis requires a configured API key below.
+                      Extraction mode not configured. Select a mode to enable document analysis.
                     </span>
                   </div>
-                ) : null
-              ) : currentMode === 'offline' ? (
-                <p className="text-xs text-muted-foreground">
-                  Local AI server must be running for offline extraction to work.
-                </p>
-              ) : (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <span>
-                    Extraction mode not configured. Select a mode to enable document analysis.
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Section 3: AI Service Configuration */}
-          <Card>
+          {showGeminiOnline && (
+            <Card>
             <CardHeader className="border-b pb-4">
               <div className="flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-primary" />
@@ -771,24 +788,14 @@ export default function SettingsPage() {
             </CardHeader>
 
             <CardContent className="pt-6 space-y-5">
-              {gemini.status === 'offline' ? (
-                /* State 1: Backend Offline */
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                    <span>
-                      AI service unavailable — ensure the local server is running
-                    </span>
-                  </div>
-                </div>
-              ) : !gemini.configured || isEditingKey ? (
-                /* State 2: Key Not Configured or Editing */
+              {!gemini.configured || isEditingKey ? (
+                /* State 1: Key Not Configured or Editing */
                 <div className="space-y-4">
                   {!gemini.configured && (
                     <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                       <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                       <span>
-                        AI service not configured
+                        AI service not configured. Enter your Google Gemini API key to enable Cloud AI features.
                       </span>
                     </div>
                   )}
@@ -959,6 +966,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Section 4: Future Settings Placeholder */}
           <Card className="border-dashed bg-card/40">
