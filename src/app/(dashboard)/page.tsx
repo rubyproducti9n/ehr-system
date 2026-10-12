@@ -25,6 +25,7 @@ import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useAppointments } from '@/hooks/useAppointments'
+import { useBackendHealth } from '@/hooks/useBackendHealth'
 import { useAppStore } from '@/store/useAppStore'
 import { StatCard } from '@/components/shared/StatCard'
 import { NewPatientSheet } from '@/components/patients/NewPatientSheet'
@@ -35,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { LearnMoreFeaturesDialog } from '@/components/shared/LearnMoreFeaturesDialog'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -124,11 +126,11 @@ export default function DashboardPage() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md mb-2">
               <Activity className="h-7 w-7" />
             </div>
-            <CardTitle className="text-3xl font-bold tracking-tight text-slate-900">
-              EHR Platform
+            <CardTitle className="text-3xl font-bold tracking-tight text-slate-900 font-lato">
+              My Aarogyam
             </CardTitle>
             <CardDescription className="text-base text-slate-600">
-              Clinical management for modern healthcare
+              Next-Generation Hospital Operating System
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
@@ -177,6 +179,10 @@ export default function DashboardPage() {
     receptionist: 'Receptionist',
   }
 
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false)
+
+  const { status: backendStatus } = useBackendHealth(user?.email || '', userRole, null)
+
   return (
     <div className="space-y-8">
       {/* Welcome Banner */}
@@ -187,7 +193,7 @@ export default function DashboardPage() {
               Welcome to <span className="text-primary font-bold">{hospitalName || 'your Hospital'}</span>
             </h2>
             <p className="text-xs text-muted-foreground">
-              Clinical dashboard and management overview
+              Dashboard and management overview
             </p>
           </div>
           <Button
@@ -202,10 +208,35 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Backend Offline Info Notice — Neutral medical style */}
+      {backendStatus === 'offline' && (
+        <div className="rounded-lg border border-border bg-card p-4 flex items-start gap-3">
+          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Stethoscope className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              Smart Features are Restricted
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Document analysis, smart search, and voice transcription are restricted. Contact Us to know more.
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-shrink-0 text-xs"
+            onClick={() => setLearnMoreOpen(true)}
+          >
+            Learn more
+          </Button>
+        </div>
+      )}
+
       {/* Header Info */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Clinical Dashboard
+          Dashboard
         </h1>
         <p className="text-sm text-muted-foreground">
           Real-time patient census, upcoming visits, and administrative metrics.
@@ -511,7 +542,7 @@ export default function DashboardPage() {
                 Schedule Appointment
               </p>
               <p className="text-xs text-muted-foreground">
-                Book a clinical consult or routine checkup
+                Book a consult or routine checkup
               </p>
             </div>
           </div>
@@ -530,7 +561,7 @@ export default function DashboardPage() {
                   Add Provider
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Register clinical staff in provider management
+                  Register staff in provider management
                 </p>
               </div>
             </div>
@@ -546,6 +577,10 @@ export default function DashboardPage() {
       <AppointmentSheet
         open={appointmentSheetOpen}
         onOpenChange={setAppointmentSheetOpen}
+      />
+      <LearnMoreFeaturesDialog
+        open={learnMoreOpen}
+        onOpenChange={setLearnMoreOpen}
       />
     </div>
   )

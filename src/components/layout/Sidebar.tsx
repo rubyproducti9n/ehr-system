@@ -19,6 +19,7 @@ import {
   Users2,
   ScanSearch,
   TerminalSquare,
+  ClipboardList,
 } from "lucide-react"
 import { useAppStore } from "@/store/useAppStore"
 import { useAuth } from "@/hooks/useAuth"
@@ -91,19 +92,19 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
           )}
         >
           {collapsed ? (
-            <LayoutDashboard className="h-5 w-5 text-primary shrink-0" />
+            <Activity className="h-5 w-5 text-primary shrink-0" />
           ) : (
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
               <Activity className="h-5 w-5 text-primary shrink-0" />
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-bold text-foreground truncate block leading-tight">
-                  EHR Platform
-                </span>
                 <span
-                  className="text-[11px] text-muted-foreground truncate block leading-tight"
+                  className="text-sm font-bold text-foreground truncate block leading-tight font-lato tracking-tight"
                   title={hospitalName || 'Hospital'}
                 >
                   {hospitalName || 'Hospital'}
+                </span>
+                <span className="text-[10px] text-muted-foreground truncate block leading-tight font-medium mt-0.5">
+                  Powered by MyAarogyam
                 </span>
               </div>
             </div>
@@ -203,8 +204,8 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
               return <React.Fragment key={item.href}>{linkContent}</React.Fragment>
             })}
 
-          {/* Staff link - visible to all authenticated users to view team members */}
-          {(() => {
+          {/* Staff link - visible to all authenticated roles with canViewStaff */}
+          {hasPermission(userRole, 'canViewStaff') && (() => {
             const isActive = pathname === "/staff" || pathname.startsWith("/staff")
             const linkContent = (
               <Link
@@ -237,6 +238,42 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
               )
             }
             return <React.Fragment key="/staff">{linkContent}</React.Fragment>
+          })()}
+
+          {/* Activity Log link - Super Admin / Dev only */}
+          {hasPermission(userRole, 'canViewActivityLog') && (() => {
+            const isActive = pathname === "/activity" || pathname.startsWith("/activity")
+            const linkContent = (
+              <Link
+                href="/activity"
+                onClick={() => {
+                  if (onMobileOpenChange) onMobileOpenChange(false)
+                }}
+                className={cn(
+                  "flex items-center rounded-md text-sm font-medium transition-colors cursor-pointer",
+                  collapsed
+                    ? "h-10 w-10 justify-center mx-auto"
+                    : "gap-3 px-3 py-2",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <ClipboardList className="h-4 w-4 shrink-0" />
+                {!collapsed && <span>Activity Log</span>}
+              </Link>
+            )
+
+            if (collapsed) {
+              return (
+                <div key="/activity" className="flex justify-center">
+                  <Tooltip content="Activity Log" side="right">
+                    {linkContent}
+                  </Tooltip>
+                </div>
+              )
+            }
+            return <React.Fragment key="/activity">{linkContent}</React.Fragment>
           })()}
 
           {/* Developer links */}

@@ -7,6 +7,7 @@ import {
   createPrescription,
   updatePrescription,
 } from '@/lib/services/prescriptionService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useProviders } from '@/hooks/useProviders'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
@@ -57,6 +58,8 @@ export function PrescriptionDialog({
   onOpenChange,
 }: PrescriptionDialogProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const isEdit = !!prescription
   const { toast } = useToast()
   const { providers, loading: providersLoading } = useProviders()
@@ -175,8 +178,28 @@ export function PrescriptionDialog({
 
       if (isEdit && prescription) {
         await updatePrescription(hospitalId, patientId, prescription.id, payload)
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'prescription.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'prescription', id: prescription.id, label: medicationName.trim() },
+            summary: `Updated prescription ${medicationName.trim()}`,
+          })
+        }
       } else {
-        await createPrescription(hospitalId, patientId, { patientId, ...payload })
+        const newRx = await createPrescription(hospitalId, patientId, { patientId, ...payload })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'prescription.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'prescription', id: newRx.id, label: medicationName.trim() },
+            summary: `Prescribed ${medicationName.trim()}`,
+          })
+        }
       }
 
       toast({
@@ -290,6 +313,8 @@ export function PrescriptionDialog({
               <Input
                 id='rx-date'
                 type='date'
+                min='1900-01-01'
+                max='2100-12-31'
                 value={prescribedDate}
                 onChange={(e) => setPrescribedDate(e.target.value)}
                 disabled={submitting}
@@ -357,7 +382,7 @@ export function PrescriptionDialog({
 
           <div className='space-y-1.5'>
             <div className='flex justify-between items-center'>
-              <Label htmlFor='rx-notes'>Clinical Notes / Instructions</Label>
+              <Label htmlFor='rx-notes'>Notes / Instructions</Label>
               <span className='text-[11px] text-muted-foreground'>
                 {notes.length} / 300
               </span>

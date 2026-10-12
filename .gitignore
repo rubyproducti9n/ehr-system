@@ -93,3 +93,19 @@ backend/patient-docs/
 
 # Batch & Shell Scripts
 *.bat
+
+# Transcription daemon & models
+model/sherpa/
+model/omi-med-stt-v1/
+backend/transcription_server.py.log
+
+# Semantic Search & Embeddings
+backend/chroma_db/
+model/gemma-2-embedding/
+
+# NER Clinical Models
+model/gatortron-onnx/
+
+
+
+

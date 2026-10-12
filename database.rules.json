@@ -174,7 +174,21 @@
       ".write": "auth != null",
       "$hospitalId": {
         ".read": "auth != null && (root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId || root.child('users').child(auth.uid).child('role').val() === 'dev')",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        "staff": {
+          "$staffUserId": {
+            ".read": "auth != null && (auth.uid === $staffUserId || root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId)",
+            ".write": "auth != null && (auth.uid === $staffUserId && !data.exists() || root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId && (root.child('users').child(auth.uid).child('role').val() === 'super_admin' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'dev'))",
+            "$other": { ".validate": "true" }
+          }
+        },
+        "activityLog": {
+          ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'super_admin' || root.child('users').child(auth.uid).child('role').val() === 'dev') && root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId",
+          "$logId": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('hospitalId').val() === $hospitalId",
+            ".validate": "newData.hasChildren(['timestamp', 'action', 'performedBy', 'entity', 'summary'])"
+          }
+        }
       }
     },
 

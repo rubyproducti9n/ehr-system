@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { LabResult } from '@/types'
 import { createLabResult, updateLabResult } from '@/lib/services/labResultService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useProviders } from '@/hooks/useProviders'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
@@ -43,6 +44,8 @@ export function LabResultDialog({
   onOpenChange,
 }: LabResultDialogProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const isEdit = !!result
   const { toast } = useToast()
   const { providers, loading: providersLoading } = useProviders()
@@ -130,8 +133,28 @@ export function LabResultDialog({
 
       if (isEdit && result) {
         await updateLabResult(hospitalId, patientId, result.id, payload)
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'lab_result.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'lab_result', id: result.id, label: title.trim() },
+            summary: `Updated lab result ${title.trim()}`,
+          })
+        }
       } else {
-        await createLabResult(hospitalId, patientId, { patientId, ...payload })
+        const newLab = await createLabResult(hospitalId, patientId, { patientId, ...payload })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'lab_result.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'lab_result', id: newLab.id, label: title.trim() },
+            summary: `Added lab result ${title.trim()}`,
+          })
+        }
       }
 
       toast({
@@ -187,6 +210,8 @@ export function LabResultDialog({
               <Input
                 id='lab-date'
                 type='date'
+                min='1900-01-01'
+                max='2100-12-31'
                 value={resultDate}
                 onChange={(e) => setResultDate(e.target.value)}
                 disabled={submitting}
@@ -233,7 +258,7 @@ export function LabResultDialog({
             <textarea
               id='lab-content'
               rows={6}
-              placeholder='Enter detailed test values, reference ranges, and clinical interpretations...'
+              placeholder='Enter detailed test values, reference ranges, and interpretations...'
               value={content}
               onChange={(e) => setContent(e.target.value)}
               disabled={submitting}

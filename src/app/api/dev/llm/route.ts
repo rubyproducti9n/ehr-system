@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isDeveloper } from '@/lib/devAccess'
-
-const BACKEND_URL = 'http://127.0.0.1:8765'
+import { getHospitalBackendUrl } from '@/lib/server/getHospitalBackendUrl'
 
 // Health check
 export async function GET(req: NextRequest) {
   const email = req.headers.get('x-user-email')
-  const role = req.headers.get('x-user-role')
+  const hospitalId = req.headers.get('x-hospital-id')
 
-  if (!isDeveloper(email, role)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!email || !email.trim()) {
+    return NextResponse.json({ error: 'Unauthorized: User email required' }, { status: 401 })
   }
 
+  const BACKEND_URL = await getHospitalBackendUrl(hospitalId ?? '')
+
   try {
-    const res = await fetch(`${BACKEND_URL}/health`, { cache: 'no-store' })
+    const res = await fetch(`${BACKEND_URL}/health`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
@@ -27,11 +27,13 @@ export async function GET(req: NextRequest) {
 // Extraction request
 export async function POST(req: NextRequest) {
   const email = req.headers.get('x-user-email')
-  const role = req.headers.get('x-user-role')
+  const hospitalId = req.headers.get('x-hospital-id')
 
-  if (!isDeveloper(email, role)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!email || !email.trim()) {
+    return NextResponse.json({ error: 'Unauthorized: User email required' }, { status: 401 })
   }
+
+  const BACKEND_URL = await getHospitalBackendUrl(hospitalId ?? '')
 
   try {
     const body = await req.json()
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
         text: body.text,
         document_type: body.document_type ?? 'auto',
       }),
-      // 90 second timeout — GTX 1650 may be slow on long documents
+      // 180 second timeout — GTX 1650 may be slow on long documents
       signal: AbortSignal.timeout(180_000),
     })
 

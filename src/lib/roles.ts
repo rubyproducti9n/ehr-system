@@ -10,7 +10,8 @@ export type UserRole = typeof ROLES[keyof typeof ROLES]
 
 // What each role can access
 export const ROLE_PERMISSIONS = {
-  canManageStaff: ['super_admin', 'dev'],
+  canViewStaff: ['super_admin', 'admin', 'doctor', 'receptionist', 'dev'],
+  canManageStaff: ['super_admin', 'admin', 'dev'],
   canModifyStaff: ['super_admin', 'dev'],
   canManageProviders: ['super_admin', 'dev'],
   canManageFacilities: ['super_admin', 'dev'],
@@ -22,6 +23,7 @@ export const ROLE_PERMISSIONS = {
   canManageSettings: ['super_admin', 'admin', 'dev'],
   canAccessDevSandbox: ['super_admin', 'admin', 'doctor', 'receptionist', 'dev'],
   canUseAiFeatures: ['super_admin', 'admin', 'doctor', 'dev'],
+  canViewActivityLog: ['super_admin', 'dev'],
 }
 
 export function hasPermission(role: string | null | undefined, permission: keyof typeof ROLE_PERMISSIONS): boolean {

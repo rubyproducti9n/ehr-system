@@ -22,6 +22,7 @@ import {
   updateAppointmentStatus,
   deleteAppointment,
 } from '@/lib/services/appointmentService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { formatDateTime } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { StatCard } from '@/components/shared/StatCard'
@@ -53,6 +54,8 @@ type StatusFilter = 'all' | 'scheduled' | 'completed' | 'cancelled'
 
 export default function SchedulingPage() {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const { appointments, loading: appointmentsLoading, error } = useAppointments()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { toast } = useToast()
@@ -215,6 +218,17 @@ export default function SchedulingPage() {
     if (!hospitalId) return
     try {
       const res = await updateAppointmentStatus(hospitalId, apt.id, status, apt)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'appointment.status_change',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'appointment', id: apt.id, label: `${apt.patientName} with ${apt.providerName}` },
+          summary: `Changed appointment status to ${status} for ${apt.patientName}`,
+        })
+      }
+
       toast({
         title: 'Status updated',
         description: `Status updated to ${status}`,
@@ -238,9 +252,21 @@ export default function SchedulingPage() {
   // Delete Appointment action
   const handleConfirmDelete = async (id: string) => {
     if (!hospitalId) return
+    const aptToDelete = appointments.find((a) => a.id === id)
     setSubmittingDelete(true)
     try {
       await deleteAppointment(hospitalId, id)
+
+      if (currentUser && userRole && aptToDelete) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'appointment.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'appointment', id, label: `${aptToDelete.patientName} with ${aptToDelete.providerName}` },
+          summary: `Cancelled appointment for ${aptToDelete.patientName}`,
+        })
+      }
+
       toast({
         title: 'Appointment deleted',
         description: 'Appointment deleted',
@@ -340,6 +366,8 @@ export default function SchedulingPage() {
           <span className="text-xs font-medium text-muted-foreground">From:</span>
           <Input
             type="date"
+            min="1900-01-01"
+            max="2100-12-31"
             className="h-8 w-36 text-xs"
             value={customFrom}
             onChange={(e) => handleCustomFromChange(e.target.value)}
@@ -348,6 +376,8 @@ export default function SchedulingPage() {
           <span className="text-xs font-medium text-muted-foreground">To:</span>
           <Input
             type="date"
+            min="1900-01-01"
+            max="2100-12-31"
             className="h-8 w-36 text-xs"
             value={customTo}
             onChange={(e) => handleCustomToChange(e.target.value)}

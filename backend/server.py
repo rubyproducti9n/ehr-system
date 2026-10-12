@@ -58,6 +58,7 @@ from pydantic import BaseModel
 from llama_cpp import Llama
 from PIL import Image
 
+import config
 from config import (
     get_active_model_path,
     get_model_info,
@@ -122,6 +123,16 @@ async def lifespan(app: FastAPI):
     docs_path = Path(config.STORAGE_ROOT)
     docs_path.mkdir(parents=True, exist_ok=True)
     log.info(f"Docs folder ready: {docs_path}")
+
+    # Preload embedding model on startup to avoid cold-load timeout on first search
+    try:
+        from embedding_engine import load_embedding_model
+        log.info("Preloading Gemma 2 embedding model...")
+        load_embedding_model()
+        log.info("Embedding model ready")
+    except Exception as e:
+        log.warning(f"Embedding model preload failed (will load on first search): {e}")
+
     log.info("Server ready — model will load on first extraction request")
     yield
     global llm
@@ -151,9 +162,12 @@ app.add_middleware(
 )
 
 # Static file serving for patient documents
-if STORAGE_ROOT and Path(STORAGE_ROOT).exists():
+Path(STORAGE_ROOT).mkdir(parents=True, exist_ok=True)
+try:
     app.mount("/patient-docs", StaticFiles(directory=STORAGE_ROOT), name="patient-docs")
     log.info(f"Serving patient docs from: {STORAGE_ROOT}")
+except Exception as e:
+    log.warning(f"StaticFiles mount warning: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +202,10 @@ class OcrResponse(BaseModel):
     low_confidence_warning: bool
     quality: dict | None = None               # ← new, optional
     preprocessing_applied: list[str] | None = None   # ← new, optional
+    ner_entities: list | None = None
+    ner_summary: dict | None = None
     error: str | None = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +354,8 @@ def ocr_endpoint(req: OcrRequest):
             low_confidence_warning=result["low_confidence_warning"],
             quality=result.get("quality"),
             preprocessing_applied=result.get("preprocessing_applied"),
+            ner_entities=result.get("ner_entities"),
+            ner_summary=result.get("ner_summary"),
         )
 
     except ValueError as e:
@@ -568,15 +587,14 @@ async def upload_files(
     patientId: str = Form(...),
     files: List[UploadFile] = File(...),
 ):
-    from config import STORAGE_ROOT as CURRENT_STORAGE_ROOT
-    storage_root = os.getenv("STORAGE_ROOT", CURRENT_STORAGE_ROOT).strip()
-    if not storage_root:
-        raise HTTPException(
-            status_code=400,
-            detail="Storage location not configured. Set it in Settings before uploading."
-        )
+    import config
+    env_storage = os.getenv("STORAGE_ROOT", "").strip()
+    storage_root = env_storage or config.STORAGE_ROOT or str(config.DEFAULT_STORAGE_ROOT)
+    storage_path = Path(storage_root)
+    if not storage_path.is_absolute():
+        storage_path = (config.PROJECT_ROOT / storage_path).resolve()
 
-    patient_folder = Path(storage_root) / patientId
+    patient_folder = storage_path / patientId
     patient_folder.mkdir(parents=True, exist_ok=True)
     saved = []
 
@@ -745,6 +763,180 @@ def gemini_clear_key():
     ocr_gemini.GEMINI_API_KEY = ""
     log.info("Gemini API key cleared")
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# omi-med-stt Transcription status check endpoint
+# ---------------------------------------------------------------------------
+from transcription_engine import get_model_info as get_transcription_info
+
+@app.get("/transcription/status")
+def transcription_status():
+    import socket
+    host = config.TRANSCRIPTION_HOST
+    port = config.TRANSCRIPTION_PORT
+    try:
+        sock = socket.create_connection((host, port), timeout=2)
+        sock.close()
+        reachable = True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        reachable = False
+
+    return {
+        "status": "online" if reachable else "offline",
+        "host": host,
+        "port": port,
+        "model": get_transcription_info(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Semantic Search endpoints (Gemma 2 embedding + ChromaDB)
+# ---------------------------------------------------------------------------
+from search_engine import search_hospital
+from embedding_engine import get_model_info as get_embedding_info, is_model_loaded as is_embedding_loaded
+
+class SearchRequest(BaseModel):
+    query: str
+    hospital_id: str
+
+class SearchResult(BaseModel):
+    id: str
+    type: str
+    label: str
+    sublabel: str
+    href: str
+    score: float
+
+class SearchResponse(BaseModel):
+    results: List[SearchResult]
+    query: str
+    total: int
+    embedding_model: str = "gemma-2-embedding"
+    search_time_ms: int
+
+@app.post("/search", response_model=SearchResponse)
+def semantic_search(req: SearchRequest):
+    if not req.query or len(req.query.strip()) < 2:
+        return SearchResponse(
+            results=[],
+            query=req.query,
+            total=0,
+            search_time_ms=0,
+        )
+
+    if not req.hospital_id:
+        raise HTTPException(status_code=400, detail="hospital_id is required")
+
+    import time
+    start = time.time()
+
+    try:
+        results = search_hospital(req.hospital_id, req.query)
+        elapsed_ms = int((time.time() - start) * 1000)
+        return SearchResponse(
+            results=[SearchResult(**r) for r in results],
+            query=req.query,
+            total=len(results),
+            search_time_ms=elapsed_ms,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.error(f"Search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+@app.get("/search/status")
+def search_status():
+    return {
+        "embedding_model": get_embedding_info(),
+        "status": "ready" if is_embedding_loaded() else "not_loaded",
+        "note": "Model loads on first search request",
+    }
+
+
+# ---------------------------------------------------------------------------
+# GatorTron Clinical NER endpoints
+# ---------------------------------------------------------------------------
+from ner_engine import (
+    tag_text_with_entities,
+    get_model_info as get_ner_info,
+    is_model_loaded as is_ner_loaded,
+)
+
+class NerRequest(BaseModel):
+    text: str
+
+class NerResponse(BaseModel):
+    original_text: str
+    annotated_text: str
+    entities: list
+    summary: dict
+    model: str = "UFNLP/gatortron-base-2k"
+
+@app.post("/ner", response_model=NerResponse)
+def run_ner_endpoint(req: NerRequest):
+    if not req.text or len(req.text.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Text too short for NER")
+    try:
+        result = tag_text_with_entities(req.text)
+        return NerResponse(**result)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        log.error(f"NER error: {e}")
+        raise HTTPException(status_code=500, detail=f"NER failed: {str(e)}")
+
+@app.get("/ner/status")
+def ner_status():
+    return {
+        "status": "loaded" if is_ner_loaded() else "not_loaded",
+        "model": get_ner_info(),
+        "note": "Model loads on first /ner request and auto-unloads after idle",
+    }
+
+
+
+
+@app.post("/auth/check-imported-provider")
+async def check_imported_provider(body: dict):
+    """
+    Checks if an email belongs to an imported but unprovisioned provider in a hospital.
+    Called during login before Auth account exists — no user auth token available.
+    Returns provider name if found, null if not.
+    Uses Firebase Admin SDK so bypasses client-side rules.
+    """
+    hospital_id = body.get("hospital_id", "").strip()
+    email = body.get("email", "").strip().lower()
+
+    if not hospital_id or not email:
+        raise HTTPException(status_code=400, detail="hospital_id and email required")
+
+    try:
+        from hospital_data_fetcher import get_firebase_db
+        db = get_firebase_db()
+        providers_ref = db.reference(f"hospitals/{hospital_id}/providers")
+        providers = providers_ref.get() or {}
+
+        for pid, provider in providers.items():
+            if not isinstance(provider, dict):
+                continue
+            if (
+                provider.get("email", "").lower() == email and
+                provider.get("isImported") is True and
+                provider.get("authProvisioned") is not True
+            ):
+                return {
+                    "found": True,
+                    "providerName": provider.get("name", ""),
+                    "providerId": pid,
+                    "isActive": provider.get("isActive", True),
+                }
+
+        return {"found": False}
+    except Exception as e:
+        log.error(f"check-imported-provider error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

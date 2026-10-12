@@ -3,16 +3,19 @@
 import { useState, useMemo, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Search, MoreHorizontal, UserX, AlertTriangle, SearchX, Users } from 'lucide-react'
+import { Plus, Search, MoreHorizontal, UserX, AlertTriangle, SearchX, Users, Download } from 'lucide-react'
 import { Patient } from '@/types'
 import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
-import { updatePatientStatus, deletePatient } from '@/lib/services/patientService'
+import { updatePatientStatus, updatePatient, deletePatient } from '@/lib/services/patientService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useAppStore } from '@/store/useAppStore'
 import { formatDate, calculateAge } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { NewPatientSheet } from '@/components/patients/NewPatientSheet'
+import { SortableHeader, SortDirection } from '@/components/shared/SortableHeader'
+import { exportTableToPdf } from '@/lib/pdfExport'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +49,8 @@ import { EmptyState } from '@/components/shared/EmptyState'
 
 function PatientsContent() {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const { patients, loading: patientsLoading, error } = usePatients()
   const { providers, loading: providersLoading } = useProviders()
   const { facilities, loading: facilitiesLoading } = useFacilities()
@@ -72,6 +77,23 @@ function PatientsContent() {
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null)
   const [confirmNameInput, setConfirmNameInput] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') setSortDirection('desc')
+      else if (sortDirection === 'desc') {
+        setSortField(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
 
   // Debounce search query by 300ms
   useEffect(() => {
@@ -98,19 +120,12 @@ function PatientsContent() {
   const filteredPatients = useMemo(() => {
     let result = [...patients]
 
-    // 1. Sort by createdAt descending (most recent first)
-    result.sort((a, b) => {
-      const timeA = new Date(a.createdAt || 0).getTime()
-      const timeB = new Date(b.createdAt || 0).getTime()
-      return timeB - timeA
-    })
-
-    // 2. Status filter
+    // 1. Status filter
     if (activeTab !== 'all') {
       result = result.filter((p) => p.status === activeTab)
     }
 
-    // 3. Search query filter
+    // 2. Search query filter
     if (debouncedQuery.trim()) {
       const query = debouncedQuery.toLowerCase().trim()
       result = result.filter((p) => {
@@ -125,18 +140,111 @@ function PatientsContent() {
       })
     }
 
+    // 3. Sorting (explicit field or fallback to createdAt descending)
+    if (sortField && sortDirection) {
+      result.sort((a, b) => {
+        let valA: any = ''
+        let valB: any = ''
+        if (sortField === 'name') {
+          valA = (a.name || '').toLowerCase()
+          valB = (b.name || '').toLowerCase()
+        } else if (sortField === 'gender') {
+          valA = (a.gender || '').toLowerCase()
+          valB = (b.gender || '').toLowerCase()
+        } else if (sortField === 'age') {
+          valA = a.dob ? calculateAge(a.dob) : a.age ?? 0
+          valB = b.dob ? calculateAge(b.dob) : b.age ?? 0
+        } else if (sortField === 'status') {
+          valA = (a.status || '').toLowerCase()
+          valB = (b.status || '').toLowerCase()
+        } else if (sortField === 'patientType') {
+          valA = (a.patientType || '').toLowerCase()
+          valB = (b.patientType || '').toLowerCase()
+        } else if (sortField === 'lastVisitDate') {
+          valA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : 0
+          valB = b.lastVisitDate ? new Date(b.lastVisitDate).getTime() : 0
+        } else if (sortField === 'doctor') {
+          valA = (a.currentDoctorId ? providerMap.get(a.currentDoctorId) || '' : '').toLowerCase()
+          valB = (b.currentDoctorId ? providerMap.get(b.currentDoctorId) || '' : '').toLowerCase()
+        } else if (sortField === 'facility') {
+          valA = (a.facilityId ? facilityMap.get(a.facilityId) || '' : '').toLowerCase()
+          valB = (b.facilityId ? facilityMap.get(b.facilityId) || '' : '').toLowerCase()
+        }
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+        return 0
+      })
+    } else {
+      result.sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime()
+        const timeB = new Date(b.createdAt || 0).getTime()
+        return timeB - timeA
+      })
+    }
+
     return result
-  }, [patients, activeTab, debouncedQuery, providerMap, facilityMap])
+  }, [patients, activeTab, debouncedQuery, providerMap, facilityMap, sortField, sortDirection])
+
+  const handleExportPdf = () => {
+    exportTableToPdf({
+      title: 'Patient Directory',
+      subtitle: activeTab === 'all' ? 'All Registered Patients' : `Patients (${activeTab.toUpperCase()})`,
+      filename: `patients-directory-${new Date().toISOString().split('T')[0]}.pdf`,
+      columns: [
+        { header: 'Patient Name', dataKey: 'name' },
+        { header: 'Gender', dataKey: 'gender' },
+        { header: 'Age', dataKey: 'age' },
+        { header: 'Status', dataKey: 'status' },
+        { header: 'Type', dataKey: 'patientType' },
+        { header: 'Last Visit', dataKey: 'lastVisit' },
+        { header: 'Attending Doctor', dataKey: 'doctor' },
+        { header: 'Hospital / Facility', dataKey: 'facility' },
+      ],
+      data: filteredPatients.map((p) => ({
+        name: p.name,
+        gender: p.gender || '—',
+        age: p.dob ? `${calculateAge(p.dob)} yrs` : (p.age ? `${p.age} yrs` : '—'),
+        status: p.status.toUpperCase(),
+        patientType: p.patientType === 'in-patient' ? 'In-Patient' : (p.patientType === 'out-patient' ? 'Out-Patient' : '—'),
+        lastVisit: p.lastVisitDate ? formatDate(p.lastVisitDate) : '—',
+        doctor: p.currentDoctorId ? providerMap.get(p.currentDoctorId) || 'Unassigned' : 'Unassigned',
+        facility: p.facilityId ? facilityMap.get(p.facilityId) || '—' : '—',
+      })),
+    })
+  }
 
   // Status update handler
   const handleStatusChange = async (patient: Patient, newStatus: Patient['status']) => {
     if (patient.status === newStatus || !hospitalId) return
     try {
       await updatePatientStatus(hospitalId, patient.id, newStatus)
-      toast({
-        title: 'Status updated',
-        description: `Status updated to ${newStatus}`,
-      })
+
+      if (newStatus === 'discharged' && patient.patientType === 'in-patient') {
+        const today = new Date().toISOString().split('T')[0]
+        await updatePatient(hospitalId, patient.id, {
+          lastVisitDate: today,
+          updatedAt: new Date().toISOString(),
+        })
+        toast({
+          title: 'Patient discharged',
+          description: 'Last visit date has been updated to today.',
+        })
+      } else {
+        toast({
+          title: 'Status updated',
+          description: `Status updated to ${newStatus}`,
+        })
+      }
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'patient.status_change',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'patient', id: patient.id, label: patient.name },
+          summary: `Changed ${patient.name} status to ${newStatus}`,
+        })
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to update patient status'
       toast({
@@ -160,6 +268,17 @@ function PatientsContent() {
     setDeleting(true)
     try {
       await deletePatient(hospitalId, patientToDelete.id)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'patient.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'patient', id: patientToDelete.id, label: patientToDelete.name },
+          summary: `Deleted patient ${patientToDelete.name}`,
+        })
+      }
+
       toast({
         title: 'Patient deleted',
         description: 'Patient deleted',
@@ -203,10 +322,22 @@ function PatientsContent() {
           </TabsList>
         </Tabs>
 
-        <Button onClick={() => setSheetOpen(true)} className='gap-2 w-full sm:w-auto'>
-          <Plus className='h-4 w-4' />
-          New Patient
-        </Button>
+        <div className='flex items-center gap-2 w-full sm:w-auto'>
+          <Button
+            variant='outline'
+            onClick={handleExportPdf}
+            disabled={isLoading || filteredPatients.length === 0}
+            className='gap-2 flex-1 sm:flex-initial'
+            title='Download patients list as PDF'
+          >
+            <Download className='h-4 w-4' />
+            Download PDF
+          </Button>
+          <Button onClick={() => setSheetOpen(true)} className='gap-2 flex-1 sm:flex-initial'>
+            <Plus className='h-4 w-4' />
+            New Patient
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar Row */}
@@ -233,14 +364,78 @@ function PatientsContent() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className='font-semibold'>Patient Name</TableHead>
-              <TableHead className='font-semibold'>Gender</TableHead>
-              <TableHead className='font-semibold'>Age</TableHead>
-              <TableHead className='font-semibold'>Status</TableHead>
-              <TableHead className='font-semibold'>Type</TableHead>
-              <TableHead className='font-semibold'>Last Visit</TableHead>
-              <TableHead className='font-semibold'>Current Doctor</TableHead>
-              <TableHead className='font-semibold'>Hospital</TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Patient Name"
+                  field="name"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Gender"
+                  field="gender"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Age"
+                  field="age"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Status"
+                  field="status"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Type"
+                  field="patientType"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Last Visit"
+                  field="lastVisitDate"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Current Doctor"
+                  field="doctor"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Hospital"
+                  field="facility"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
               <TableHead className='text-right font-semibold'>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -480,7 +675,7 @@ function PatientsContent() {
             </div>
             <DialogDescription className='space-y-3 pt-2 text-left'>
               <span>
-                Deleting a patient removes all their clinical records and historical data permanently.
+                Deleting a patient removes all their medical records and historical data permanently.
               </span>
               <span className='block text-xs font-medium text-foreground bg-muted p-2 rounded-md'>
                 Please type <strong className='underline'>{patientToDelete?.name}</strong> below to confirm:

@@ -15,7 +15,7 @@ export async function registerHospital(data: {
   adminName: string
   adminEmail: string
   adminPassword: string
-}): Promise<{ hospitalId: string; hospitalCode: string }> {
+}): Promise<{ hospitalId: string; hospitalCode: string; adminUid: string }> {
   const userCredential = await createUserWithEmailAndPassword(
     auth,
     data.adminEmail,
@@ -65,7 +65,7 @@ export async function registerHospital(data: {
 
     await set(ref(db, `hospitalCodes/${hospitalCode}`), hospitalId)
 
-    return { hospitalId, hospitalCode }
+    return { hospitalId, hospitalCode, adminUid: uid }
   } catch (error) {
     if (userCredential?.user) {
       try {
@@ -84,7 +84,7 @@ export async function registerStaff(data: {
   email: string
   password: string
   role: 'doctor' | 'receptionist'
-}): Promise<void> {
+}): Promise<{ hospitalId: string; uid: string }> {
   const code = data.hospitalCode.toUpperCase().trim()
   const snap = await get(ref(db, `hospitalCodes/${code}`))
   if (!snap.exists()) {
@@ -120,6 +120,8 @@ export async function registerStaff(data: {
       joinedAt: now,
       isActive: true,
     })
+
+    return { hospitalId, uid }
   } catch (error) {
     if (userCredential?.user) {
       try {
@@ -133,58 +135,131 @@ export async function registerStaff(data: {
 }
 
 export async function loginUser(data: {
+  hospitalCode: string
   email: string
   password: string
-}): Promise<{ hospitalId: string; hospitalCode: string; hospitalName: string; role: import('@/types').AppUser['role']; displayName: string }> {
-  const userCredential = await signInWithEmailAndPassword(
-    auth,
-    data.email,
-    data.password
-  )
-  const uid = userCredential.user.uid
+  confirmPassword?: string  // only required for first-time imported providers
+}): Promise<{
+  hospitalId: string
+  hospitalCode: string
+  role: import('@/types').AppUser['role']
+  displayName: string
+  isFirstTimeImportedProvider?: boolean
+}> {
+  const code = data.hospitalCode.toUpperCase().trim()
+  const snap = await get(ref(db, `hospitalCodes/${code}`))
+  if (!snap.exists()) throw new Error('Invalid hospital code.')
+  const hospitalId = snap.val()
 
+  let uid: string
+  let isFirstTimeImportedProvider = false
+
+  try {
+    // Attempt normal login first
+    const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password)
+    uid = userCredential.user.uid
+  } catch (authError: any) {
+    // If user not found in Auth — check if they are an imported provider
+    if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
+      let checkData: { found?: boolean; providerName?: string; providerId?: string; isActive?: boolean } = {}
+      try {
+        const checkRes = await fetch('/api/auth/check-imported-provider', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hospital_id: hospitalId, email: data.email }),
+        })
+        checkData = await checkRes.json()
+      } catch (checkErr) {
+        console.error('Error checking imported provider:', checkErr)
+        throw new Error('Invalid email or password.')
+      }
+
+      if (!checkData.found) {
+        throw new Error('Invalid email or password.')
+      }
+
+      if (checkData.isActive === false) {
+        throw new Error('Your account has been deactivated before activation. Contact your hospital administrator.')
+      }
+
+      // Imported provider found — require password confirmation
+      if (!data.confirmPassword) {
+        // Signal to UI that confirmation is needed
+        throw { code: 'IMPORTED_PROVIDER_NEEDS_CONFIRMATION', providerName: checkData.providerName }
+      }
+
+      if (data.password !== data.confirmPassword) {
+        throw new Error('Passwords do not match.')
+      }
+
+      if (data.password.length < 8) {
+        throw new Error('Password must be at least 8 characters.')
+      }
+
+      // Create Auth account
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password)
+      uid = userCredential.user.uid
+      isFirstTimeImportedProvider = true
+
+      const now = new Date().toISOString()
+      const providerDisplayName = checkData.providerName || data.email.split('@')[0]
+
+      // Write users node and staff node
+      await update(ref(db, `users/${uid}`), {
+        hospitalId,
+        hospitalCode: code,
+        role: 'doctor',
+        email: data.email,
+        displayName: providerDisplayName,
+        isActive: true,
+      })
+
+      await update(ref(db, `hospitals/${hospitalId}/staff/${uid}`), {
+        uid,
+        email: data.email,
+        displayName: providerDisplayName,
+        role: 'doctor',
+        joinedAt: now,
+        isActive: true,
+      })
+
+      // Mark provider as provisioned
+      if (checkData.providerId) {
+        await update(ref(db, `hospitals/${hospitalId}/providers/${checkData.providerId}`), {
+          authProvisioned: true,
+          authUid: uid,
+        })
+      }
+    } else {
+      // Different auth error — rethrow as generic message
+      throw new Error('Invalid email or password.')
+    }
+  }
+
+  // Normal flow continues — read user data
   const userSnap = await get(ref(db, `users/${uid}`))
   if (!userSnap.exists()) {
     await signOut(auth)
-    throw new Error('User record not found. Please contact your hospital administrator.')
+    throw new Error('Account not found.')
   }
-
   const userData = userSnap.val()
 
-  // Check if account is active from users node
+  if (userData.hospitalId !== hospitalId) {
+    await signOut(auth)
+    throw new Error('This account does not belong to this hospital.')
+  }
+
   if (userData.isActive === false) {
     await signOut(auth)
     throw new Error('Your account has been deactivated. Contact your hospital administrator.')
   }
 
-  const hospitalId = userData.hospitalId
-  if (!hospitalId) {
-    await signOut(auth)
-    throw new Error('No hospital assigned to this account.')
-  }
-
-  let hospitalName = ''
-  let hospitalCode = userData.hospitalCode || ''
-
-  try {
-    const profileSnap = await get(ref(db, `hospitals/${hospitalId}/profile`))
-    if (profileSnap.exists()) {
-      const profileData = profileSnap.val()
-      hospitalName = profileData.name || ''
-      if (!hospitalCode && profileData.hospitalCode) {
-        hospitalCode = profileData.hospitalCode
-      }
-    }
-  } catch (err) {
-    console.error('Failed to get hospital profile during login:', err)
-  }
-
   return {
     hospitalId,
-    hospitalCode,
-    hospitalName,
+    hospitalCode: code,
     role: userData.role,
     displayName: userData.displayName || data.email.split('@')[0],
+    isFirstTimeImportedProvider,
   }
 }
 

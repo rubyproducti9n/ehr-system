@@ -5,6 +5,7 @@ import { Plus, Edit, Trash2, Calendar, FileText, ClipboardList } from 'lucide-re
 import { AdtEvent } from '@/types'
 import { useAdtEvents } from '@/hooks/useAdtEvents'
 import { deleteAdtEvent } from '@/lib/services/adtService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useAppStore } from '@/store/useAppStore'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -23,6 +24,7 @@ interface AdtEventsTabProps {
 export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
   const userRole = useAppStore((state) => state.userRole)
+  const currentUser = useAppStore((state) => state.currentUser)
   const canEdit = hasPermission(userRole, 'canEditClinicalRecords')
   const { events, loading, error } = useAdtEvents(patientId)
   const { toast } = useToast()
@@ -49,6 +51,17 @@ export function AdtEventsTab({ patientId }: AdtEventsTabProps) {
     setSubmittingDelete(true)
     try {
       await deleteAdtEvent(hospitalId, patientId, eventId)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'adt_event.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'adt_event', id: eventId, label: `ADT Event (${eventId})` },
+          summary: `Deleted ADT event record`,
+        })
+      }
+
       toast({
         title: 'ADT event deleted',
         description: 'ADT event has been deleted.',

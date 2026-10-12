@@ -19,13 +19,27 @@ import {
   KeyRound,
   Trash2,
   XCircle,
+  Server,
+  Radio,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
-import { getStorageLocation, setStorageLocation, setExtractionMode, setAiModel } from '@/lib/services/settingsService'
+import {
+  getStorageLocation,
+  setStorageLocation,
+  setExtractionMode,
+  setAiModel,
+  setBackendUrl,
+  setTranscriptionUrl,
+} from '@/lib/services/settingsService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { isDeveloper } from '@/lib/devAccess'
 import { useGeminiStatus } from '@/hooks/useGeminiStatus'
+import { useTranscriptionStatus } from '@/hooks/useTranscriptionStatus'
 import { db } from '@/lib/firebase'
 import { ref, get, update } from 'firebase/database'
 import { Button } from '@/components/ui/button'
@@ -82,7 +96,7 @@ interface HospitalProfileData {
 const AVAILABLE_AI_MODELS = [
   { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', tag: 'Fast & Recommended', desc: 'Ultra-fast multimodal model optimized for medical documents' },
   { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', tag: 'Hybrid Reasoning', desc: 'Advanced reasoning and high-fidelity prescription recognition' },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', tag: 'Balanced', desc: 'Stable multimodal extraction for clinical forms and lab results' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', tag: 'Balanced', desc: 'Stable multimodal extraction for medical forms and lab results' },
   { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite', tag: 'Lightweight', desc: 'High-throughput lightweight model for fast document scans' },
   { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', tag: 'Fast Vision', desc: 'Optimized fast vision extraction for clear prescriptions' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', tag: 'High Capacity', desc: 'Standard production vision model with wide context support' },
@@ -104,7 +118,8 @@ export default function SettingsPage() {
   const showGeminiOnline = isFeatureVisible('gemini_online_extraction')
 
   const developer = isDeveloper(currentUser?.email, userRole)
-  const gemini = useGeminiStatus(currentUser?.email, userRole)
+  const gemini = useGeminiStatus(currentUser?.email, userRole, hospitalId)
+  const liveTranscriptionStatus = useTranscriptionStatus()
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -114,6 +129,17 @@ export default function SettingsPage() {
   const [backendOffline, setBackendOffline] = useState(false)
   const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo | null>(null)
   const [storagePathInput, setStoragePathInput] = useState<string>('')
+
+  // AI Server Connection (Document AI & Transcription)
+  const [backendUrlInput, setBackendUrlInput] = useState('')
+  const [transcriptionUrlInput, setTranscriptionUrlInput] = useState('')
+  const [savingBackendUrl, setSavingBackendUrl] = useState(false)
+  const [savingTranscriptionUrl, setSavingTranscriptionUrl] = useState(false)
+  const [testingBackend, setTestingBackend] = useState(false)
+  const [testingTranscription, setTestingTranscription] = useState(false)
+  const [backendTestStatus, setBackendTestStatus] = useState<{ connected: boolean; message: string } | null>(null)
+  const [transcriptionTestStatus, setTranscriptionTestStatus] = useState<{ connected: boolean; message: string } | null>(null)
+  const [tunnelHelpOpen, setTunnelHelpOpen] = useState(false)
 
   // AI Key state
   const [apiKeyInput, setApiKeyInput] = useState('')
@@ -179,6 +205,7 @@ export default function SettingsPage() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'x-user-email': currentUser.email,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole
@@ -220,6 +247,7 @@ export default function SettingsPage() {
     try {
       const headers: Record<string, string> = {
         'x-user-email': currentUser.email,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole
@@ -252,11 +280,232 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveBackendUrl = async () => {
+    if (!hospitalId || !currentUser?.email) return
+    const trimmed = backendUrlInput.trim()
+    if (trimmed && !trimmed.startsWith('https://') && !trimmed.startsWith('http://')) {
+      toast({
+        title: 'Invalid URL',
+        description: 'Backend URL must start with https:// or http://',
+        variant: 'destructive',
+      })
+      return
+    }
+    setSavingBackendUrl(true)
+    try {
+      await setBackendUrl(hospitalId, trimmed, currentUser.email)
+      toast({
+        title: 'Backend URL saved',
+        description: trimmed ? `FastAPI backend set to ${trimmed}` : 'Reset to default (http://127.0.0.1:8765)',
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to save backend URL',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingBackendUrl(false)
+    }
+  }
+
+  const handleClearBackendUrl = async () => {
+    if (!hospitalId || !currentUser?.email) return
+    setSavingBackendUrl(true)
+    try {
+      await setBackendUrl(hospitalId, '', currentUser.email)
+      setBackendUrlInput('')
+      toast({
+        title: 'Backend URL cleared',
+        description: 'Reset to default local URL (http://127.0.0.1:8765)',
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to clear backend URL',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingBackendUrl(false)
+    }
+  }
+
+  const handleTestBackend = async () => {
+    setTestingBackend(true)
+    setBackendTestStatus(null)
+    try {
+      const res = await fetch('/api/dev/llm?mode=health', {
+        headers: {
+          'x-user-email': currentUser?.email ?? '',
+          'x-hospital-id': hospitalId ?? '',
+        }
+      })
+      const data = await res.json()
+      if (res.ok && (data.status === 'ok' || data.loaded !== undefined || data.status === 'ready')) {
+        setBackendTestStatus({
+          connected: true,
+          message: 'Connection successful'
+        })
+      } else {
+        setBackendTestStatus({
+          connected: false,
+          message: 'Could not connect — check that the service is running on this device'
+        })
+      }
+    } catch (err) {
+      setBackendTestStatus({
+        connected: false,
+        message: 'Could not connect — check that the service is running on this device'
+      })
+    } finally {
+      setTestingBackend(false)
+    }
+  }
+
+  const handleSaveTranscriptionUrl = async () => {
+    if (!hospitalId || !currentUser?.email) return
+    const trimmed = transcriptionUrlInput.trim()
+    if (trimmed && !trimmed.startsWith('wss://') && !trimmed.startsWith('ws://')) {
+      toast({
+        title: 'Invalid URL',
+        description: 'Transcription URL must start with wss:// or ws://',
+        variant: 'destructive',
+      })
+      return
+    }
+    setSavingTranscriptionUrl(true)
+    try {
+      await setTranscriptionUrl(hospitalId, trimmed, currentUser.email)
+      toast({
+        title: 'Transcription URL saved',
+        description: trimmed ? `Transcription WebSocket set to ${trimmed}` : 'Reset to default (ws://127.0.0.1:8000)',
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to save transcription URL',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingTranscriptionUrl(false)
+    }
+  }
+
+  const handleClearTranscriptionUrl = async () => {
+    if (!hospitalId || !currentUser?.email) return
+    setSavingTranscriptionUrl(true)
+    try {
+      await setTranscriptionUrl(hospitalId, '', currentUser.email)
+      setTranscriptionUrlInput('')
+      toast({
+        title: 'Transcription URL cleared',
+        description: 'Reset to default local URL (ws://127.0.0.1:8000)',
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to clear transcription URL',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingTranscriptionUrl(false)
+    }
+  }
+
+  const handleTestTranscription = async () => {
+    setTestingTranscription(true)
+    setTranscriptionTestStatus(null)
+
+    try {
+      const res = await fetch('/api/transcription/status', {
+        headers: {
+          'x-user-email': currentUser?.email ?? '',
+          'x-hospital-id': hospitalId ?? '',
+        },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
+      })
+      const data = await res.json()
+      if (res.ok && data.status === 'online') {
+        setTranscriptionTestStatus({
+          connected: true,
+          message: 'Connection successful',
+        })
+      } else {
+        // Direct WebSocket connectivity check fallback
+        const wsUrl = transcriptionUrlInput.trim() || appSettings?.transcriptionUrl || 'ws://127.0.0.1:8000'
+        const ws = new WebSocket(wsUrl)
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          try { ws.close() } catch {}
+          setTestingTranscription(false)
+          setTranscriptionTestStatus({
+            connected: false,
+            message: 'Could not connect — check that the service is running on this device',
+          })
+        }, 4000)
+
+        ws.onopen = () => {
+          if (!timedOut) {
+            clearTimeout(timer)
+            setTestingTranscription(false)
+            setTranscriptionTestStatus({
+              connected: true,
+              message: 'Connection successful',
+            })
+            try { ws.close() } catch {}
+          }
+        }
+
+        ws.onerror = () => {
+          if (!timedOut) {
+            clearTimeout(timer)
+            setTestingTranscription(false)
+            setTranscriptionTestStatus({
+              connected: false,
+              message: 'Could not connect — check that the service is running on this device',
+            })
+          }
+        }
+        return
+      }
+    } catch (err) {
+      setTranscriptionTestStatus({
+        connected: false,
+        message: 'Could not connect — check that the service is running on this device',
+      })
+    } finally {
+      setTestingTranscription(false)
+    }
+  }
+
+  useEffect(() => {
+    if (appSettings?.backendUrl !== undefined) {
+      setBackendUrlInput(appSettings.backendUrl || '')
+    }
+    if (appSettings?.transcriptionUrl !== undefined) {
+      setTranscriptionUrlInput(appSettings.transcriptionUrl || '')
+    }
+  }, [appSettings?.backendUrl, appSettings?.transcriptionUrl])
+
   const handleModeChange = async (mode: 'online' | 'offline') => {
     if (!hospitalId) return
     setSavingMode(true)
     try {
       await setExtractionMode(hospitalId, mode)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'settings.update',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'settings', id: hospitalId, label: 'Extraction Mode' },
+          summary: `Updated AI extraction mode to ${mode}`,
+          metadata: { extractionMode: mode },
+        })
+      }
+
       toast({
         title: 'Extraction mode updated',
         description: `Extraction mode updated to ${mode}.`,
@@ -347,7 +596,11 @@ export default function SettingsPage() {
           }
         }
 
-        const res = await fetch('/api/system-info')
+        const res = await fetch('/api/system-info', {
+          headers: {
+            'x-hospital-id': hospitalId ?? '',
+          },
+        })
         const data = await res.json()
         if (res.status === 503 || data.error) {
           setBackendOffline(true)
@@ -401,6 +654,7 @@ export default function SettingsPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-user-email': currentUser.email,
+          'x-hospital-id': hospitalId ?? '',
         },
         body: JSON.stringify({ path: trimmed }),
       })
@@ -416,6 +670,18 @@ export default function SettingsPage() {
       }
 
       await setStorageLocation(hospitalId, trimmed, currentUser.email)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'settings.update',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'settings', id: hospitalId, label: 'Storage Location' },
+          summary: `Updated document storage location to ${trimmed}`,
+          metadata: { storageLocation: trimmed },
+        })
+      }
+
       toast({
         title: 'Storage location configured',
         description: 'The document storage path has been permanently locked.',
@@ -967,6 +1233,295 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
           )}
+
+          {/* Section 4: AI Server Connection (Document AI & Transcription) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-sm font-semibold">
+                    AI Server Connection
+                  </CardTitle>
+                </div>
+                <Badge variant="outline" className="text-[11px] font-mono">
+                  Cloudflare Tunnel / Local
+                </Badge>
+              </div>
+              <CardDescription className="text-xs">
+                Configure external endpoints for local AI backend (FastAPI) and speech-to-text engine (Sherpa-ONNX) when running EHR Platform on cloud hosting.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Sub-section 1: FastAPI Backend */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label className="text-xs font-semibold text-foreground">
+                      Document AI Backend (FastAPI)
+                    </Label>
+                  </div>
+                  {appSettings?.backendUrl ? (
+                    <Badge variant="default" className="text-[10px] bg-emerald-600 hover:bg-emerald-600 text-white font-mono">
+                      Connected and ready
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-[10px] text-muted-foreground font-mono">
+                      Not connected — features requiring the local service will be unavailable
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    placeholder="https://your-tunnel.trycloudflare.com or http://127.0.0.1:8765"
+                    value={backendUrlInput}
+                    onChange={(e) => setBackendUrlInput(e.target.value)}
+                    className="text-xs font-mono flex-1"
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveBackendUrl}
+                      disabled={savingBackendUrl}
+                      className="text-xs font-semibold"
+                    >
+                      {savingBackendUrl ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                          Saving
+                        </>
+                      ) : (
+                        'Save URL'
+                      )}
+                    </Button>
+                    {appSettings?.backendUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleClearBackendUrl}
+                        disabled={savingBackendUrl}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        Reset to Local
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleTestBackend}
+                      disabled={testingBackend}
+                      className="text-xs"
+                    >
+                      {testingBackend ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                          Testing...
+                        </>
+                      ) : (
+                        'Test Connection'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {appSettings?.backendUrl && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Configured by <span className="font-mono text-foreground">{appSettings.backendUrlSetBy || 'admin'}</span>
+                    {appSettings.backendUrlSetAt ? ` on ${formatDate(appSettings.backendUrlSetAt)}` : ''}
+                  </p>
+                )}
+
+                {backendTestStatus && (
+                  <div className={cn(
+                    'p-2.5 rounded-md text-xs flex items-center gap-2 border',
+                    backendTestStatus.connected
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-destructive/10 border-destructive/30 text-destructive'
+                  )}>
+                    {backendTestStatus.connected ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <XCircle className="h-4 w-4 shrink-0" />
+                    )}
+                    <span className="font-sans">{backendTestStatus.message}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t pt-4" />
+
+              {/* Sub-section 2: Sherpa-ONNX Transcription WebSocket */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label className="text-xs font-semibold text-foreground">
+                      Voice Transcription Service
+                    </Label>
+                    {liveTranscriptionStatus === 'online' && (
+                      <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40">
+                        Connected and ready
+                      </Badge>
+                    )}
+                    {liveTranscriptionStatus === 'offline' && (
+                      <Badge variant="outline" className="text-[10px] text-rose-600 border-rose-300 bg-rose-50 dark:bg-rose-950/40">
+                        Not connected
+                      </Badge>
+                    )}
+                    {liveTranscriptionStatus === 'checking' && (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        Checking...
+                      </Badge>
+                    )}
+                  </div>
+                  {appSettings?.transcriptionUrl ? (
+                    <Badge variant="default" className="text-[10px] bg-emerald-600 hover:bg-emerald-600 text-white font-mono">
+                      Connected and ready
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-[10px] text-muted-foreground font-mono">
+                      Not connected — features requiring the local service will be unavailable
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    placeholder="wss://your-tunnel-2.trycloudflare.com or ws://127.0.0.1:8000"
+                    value={transcriptionUrlInput}
+                    onChange={(e) => setTranscriptionUrlInput(e.target.value)}
+                    className="text-xs font-mono flex-1"
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveTranscriptionUrl}
+                      disabled={savingTranscriptionUrl}
+                      className="text-xs font-semibold"
+                    >
+                      {savingTranscriptionUrl ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                          Saving
+                        </>
+                      ) : (
+                        'Save URL'
+                      )}
+                    </Button>
+                    {appSettings?.transcriptionUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleClearTranscriptionUrl}
+                        disabled={savingTranscriptionUrl}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        Reset to Local
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleTestTranscription}
+                      disabled={testingTranscription}
+                      className="text-xs"
+                    >
+                      {testingTranscription ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                          Testing...
+                        </>
+                      ) : (
+                        'Test Connection'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {appSettings?.transcriptionUrl && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Configured by <span className="font-mono text-foreground">{appSettings.transcriptionUrlSetBy || 'admin'}</span>
+                    {appSettings.transcriptionUrlSetAt ? ` on ${formatDate(appSettings.transcriptionUrlSetAt)}` : ''}
+                  </p>
+                )}
+
+                {transcriptionTestStatus && (
+                  <div className={cn(
+                    'p-2.5 rounded-md text-xs flex items-center gap-2 border',
+                    transcriptionTestStatus.connected
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-destructive/10 border-destructive/30 text-destructive'
+                  )}>
+                    {transcriptionTestStatus.connected ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <XCircle className="h-4 w-4 shrink-0" />
+                    )}
+                    <span className="font-sans">{transcriptionTestStatus.message}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-section 3: Collapsible Cloudflare Tunnel Guide */}
+              <div className="border-t pt-3">
+                <button
+                  type="button"
+                  onClick={() => setTunnelHelpOpen(!tunnelHelpOpen)}
+                  className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors py-1"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                    Cloudflare Tunnel Quick Guide (For Cloud Deployments)
+                  </span>
+                  {tunnelHelpOpen ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+
+                {tunnelHelpOpen && (
+                  <div className="mt-3 p-3 bg-muted/40 rounded-lg text-xs space-y-2 border border-border text-muted-foreground">
+                    <p className="text-foreground font-medium">
+                      How to expose your local clinic AI services to Vercel or cloud EHR deployments:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1.5 pl-1">
+                      <li>
+                        <strong className="text-foreground">Install Cloudflared:</strong> Run{' '}
+                        <code className="bg-background px-1.5 py-0.5 rounded border text-[11px] font-mono text-foreground">
+                          winget install --id Cloudflare.cloudflared
+                        </code>{' '}
+                        in PowerShell.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">Start FastAPI Tunnel:</strong> Run{' '}
+                        <code className="bg-background px-1.5 py-0.5 rounded border text-[11px] font-mono text-foreground">
+                          cloudflared tunnel --url http://127.0.0.1:8765
+                        </code>{' '}
+                        and copy the assigned <code className="text-primary font-mono">https://*.trycloudflare.com</code> URL above.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">Start Transcription Tunnel:</strong> Run{' '}
+                        <code className="bg-background px-1.5 py-0.5 rounded border text-[11px] font-mono text-foreground">
+                          cloudflared tunnel --url http://127.0.0.1:8000
+                        </code>{' '}
+                        and paste into Transcription URL using <code className="text-primary font-mono">wss://*.trycloudflare.com</code>.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">Automated Script:</strong> Alternatively, run{' '}
+                        <code className="bg-background px-1.5 py-0.5 rounded border text-[11px] font-mono text-foreground">
+                          start-backend-light.bat
+                        </code>{' '}
+                        which spins up the backend and tunnels in one step.
+                      </li>
+                    </ol>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Section 4: Future Settings Placeholder */}
           <Card className="border-dashed bg-card/40">

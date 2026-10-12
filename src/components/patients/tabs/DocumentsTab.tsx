@@ -19,6 +19,7 @@ import {
 import { Document } from '@/types'
 import { useDocuments } from '@/hooks/useDocuments'
 import { deleteDocument } from '@/lib/services/documentService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { DOCUMENT_TYPES, DocumentTypeKey } from '@/lib/documentTypes'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -366,8 +367,20 @@ export function DocumentsTab({ patientId }: DocumentsTabProps) {
 
   const handleDelete = async (id: string) => {
     if (!hospitalId) return
+    const docToDelete = documents.find((d) => d.id === id)
     try {
       await deleteDocument(hospitalId, patientId, id)
+
+      if (currentUser && userRole && docToDelete) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'document.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'document', id, label: docToDelete.title },
+          summary: `Deleted document ${docToDelete.title}`,
+        })
+      }
+
       toast({
         title: 'Document deleted',
         description: 'Document deleted',

@@ -29,6 +29,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/providers": "Providers",
   "/facilities": "Hospitals",
   "/staff": "Staff Management",
+  "/activity": "Activity Log",
   "/settings": "Settings",
   "/console": "Developer Console",
   "/console/flags": "Feature Flags",
@@ -77,7 +78,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       const matchedPrefix = Object.keys(PAGE_TITLES).find(
         (path) => path !== "/" && pathname.startsWith(path)
       )
-      pageTitle = matchedPrefix ? PAGE_TITLES[matchedPrefix] : "EHR Platform"
+      pageTitle = matchedPrefix ? PAGE_TITLES[matchedPrefix] : "My Aarogyam"
     }
   }
 
@@ -169,43 +170,45 @@ export function Header({ onMenuClick }: HeaderProps) {
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end" forceMount>
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1.5">
-                <div className="flex items-center justify-between gap-1">
-                  <p className="text-sm font-medium leading-none truncate">
+          <DropdownMenuContent className="w-72 rounded-[10px] p-2.5 shadow-xl border-border/80" align="end" forceMount>
+            <DropdownMenuLabel className="font-normal px-2.5 py-2">
+              <div className="flex flex-col space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold leading-none truncate text-foreground">
                     {currentUser?.displayName || "Medical Staff"}
                   </p>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 font-medium shrink-0">
                     {roleLabel}
                   </Badge>
                 </div>
                 <p className="text-xs leading-none text-muted-foreground truncate">
                   {currentUser?.email || "user@ehr.local"}
                 </p>
-                <p className="text-[11px] leading-none text-muted-foreground font-medium pt-0.5 truncate">
-                  {hospitalName || "Hospital"}
-                </p>
+                <div className="pt-1 border-t border-border/40">
+                  <p className="text-[11px] leading-tight text-muted-foreground font-medium truncate">
+                    {hospitalName || "Hospital"}
+                  </p>
+                </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="my-1.5" />
             {userRole === 'dev' && (
               <>
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild className="rounded-lg px-2.5 py-2">
                   <Link
                     href="/console"
-                    className="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-200"
+                    className="flex items-center gap-2.5 cursor-pointer font-medium text-slate-700 dark:text-slate-200"
                   >
-                    <TerminalSquare className="h-4 w-4 text-emerald-600" />
+                    <TerminalSquare className="h-4 w-4 text-emerald-600 shrink-0" />
                     <span>Developer Console</span>
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="my-1.5" />
               </>
             )}
             <DropdownMenuItem
               onClick={handleSignOut}
-              className="text-destructive focus:text-destructive cursor-pointer"
+              className="text-destructive focus:text-destructive cursor-pointer rounded-lg px-2.5 py-2 font-medium"
             >
               Sign out
             </DropdownMenuItem>

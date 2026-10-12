@@ -23,6 +23,7 @@ export function ModelStatusBadge({
 }: ModelStatusBadgeProps) {
   const currentUser = useAppStore((state) => state.currentUser)
   const userRole = useAppStore((state) => state.userRole)
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
   const [status, setStatus] = useState<Status>('checking')
 
@@ -31,7 +32,7 @@ export function ModelStatusBadge({
 
   const email = currentUser?.email
   const developer = isDeveloper(email, userRole)
-  const gemini = useGeminiStatus(email, userRole)
+  const gemini = useGeminiStatus(email, userRole, hospitalId)
 
   useEffect(() => {
     if (!developer || !email) return
@@ -42,6 +43,7 @@ export function ModelStatusBadge({
       try {
         const headers: Record<string, string> = {
           'x-user-email': email!,
+          'x-hospital-id': hospitalId ?? '',
         }
         if (userRole) {
           headers['x-user-role'] = userRole
@@ -105,29 +107,40 @@ export function ModelStatusBadge({
       ? 'text-rose-700 dark:text-rose-400'
       : 'text-muted-foreground'
 
-  const geminiLabel = hideLocalStatus
-    ? gemini.status === 'online'
-      ? 'Cloud AI: Connected'
-      : gemini.status === 'key-missing'
-      ? 'Cloud AI: Not Configured'
-      : gemini.status === 'offline'
-      ? 'Cloud AI: Unavailable'
-      : 'Cloud AI: Checking...'
-    : gemini.status === 'online'
-    ? 'Gemini: Ready'
-    : gemini.status === 'key-missing'
-    ? 'Gemini: No Key'
-    : gemini.status === 'offline'
-    ? 'Gemini: Offline'
-    : 'Gemini: Checking...'
+  if (showGeminiStatus || hideLocalStatus) {
+    // When showGeminiStatus is true / public analyse page:
+    // Online: show nothing — when it works, show nothing. Clean interface.
+    if (gemini.status === 'online') {
+      return null
+    }
 
-  const geminiBadge = (
+    // Offline / not configured / checking: show small amber pill "Analysis service unavailable"
+    return (
+      <div
+        className={cn(
+          'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+          textSizeClasses
+        )}
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        <span>Analysis service unavailable</span>
+      </div>
+    )
+  }
+
+  // When showGeminiStatus is false (local model badge in dev sandbox):
+  // Online: "Connected" with green dot — no model name
+  // Offline: "Unavailable" with red dot — no model name
+  const isOnline = status === 'online'
+  const isChecking = status === 'checking'
+
+  return (
     <div
       className={cn('inline-flex items-center gap-1.5 font-medium', textSizeClasses)}
-      title={geminiLabel}
+      title={isOnline ? 'Connected' : isChecking ? 'Checking...' : 'Unavailable'}
     >
       <span className="relative flex items-center justify-center">
-        {gemini.status === 'online' && (
+        {isOnline && (
           <span
             className={cn(
               'absolute inline-flex rounded-full bg-emerald-400 opacity-75 animate-ping',
@@ -139,44 +152,11 @@ export function ModelStatusBadge({
           className={cn(
             'relative inline-flex rounded-full',
             dotSizeClasses,
-            geminiDotColor
-          )}
-        />
-      </span>
-
-      {showLabel && <span className={geminiTextColor}>{geminiLabel}</span>}
-    </div>
-  )
-
-  const localBadge = (
-    <div
-      className={cn('inline-flex items-center gap-1.5 font-medium', textSizeClasses)}
-      title={
-        status === 'online'
-          ? 'Local AI Model is online'
-          : status === 'offline'
-          ? 'Local AI Model is offline'
-          : 'Checking Local AI status...'
-      }
-    >
-      <span className="relative flex items-center justify-center">
-        {status === 'online' && (
-          <span
-            className={cn(
-              'absolute inline-flex rounded-full bg-emerald-400 opacity-75 animate-ping',
-              dotSizeClasses
-            )}
-          />
-        )}
-        <span
-          className={cn(
-            'relative inline-flex rounded-full',
-            dotSizeClasses,
-            status === 'online'
+            isOnline
               ? 'bg-emerald-500'
-              : status === 'offline'
-              ? 'bg-rose-500'
-              : 'bg-slate-400 animate-pulse'
+              : isChecking
+              ? 'bg-slate-400 animate-pulse'
+              : 'bg-rose-500'
           )}
         />
       </span>
@@ -184,46 +164,16 @@ export function ModelStatusBadge({
       {showLabel && (
         <span
           className={cn(
-            status === 'online'
+            isOnline
               ? 'text-emerald-700 dark:text-emerald-400'
-              : status === 'offline'
-              ? 'text-rose-700 dark:text-rose-400'
-              : 'text-muted-foreground'
+              : isChecking
+              ? 'text-muted-foreground'
+              : 'text-rose-700 dark:text-rose-400'
           )}
         >
-          {showGeminiStatus
-            ? status === 'online'
-              ? 'Local AI: Online'
-              : status === 'offline'
-              ? 'Local AI: Offline'
-              : 'Local AI: Checking...'
-            : status === 'online'
-            ? 'AI Online'
-            : status === 'offline'
-            ? 'AI Offline'
-            : 'Checking...'}
+          {isOnline ? 'Connected' : isChecking ? 'Checking...' : 'Unavailable'}
         </span>
       )}
     </div>
   )
-
-  if (showLocal && showGemini) {
-    return (
-      <div className="inline-flex items-center gap-2">
-        {localBadge}
-        <span className="h-3.5 w-px bg-border" />
-        {geminiBadge}
-      </div>
-    )
-  }
-
-  if (showLocal) {
-    return localBadge
-  }
-
-  if (showGemini) {
-    return geminiBadge
-  }
-
-  return null
 }

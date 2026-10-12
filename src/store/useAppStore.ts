@@ -26,6 +26,12 @@ interface AppStore {
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
+  backendUrl: string | null
+  transcriptionUrl: string | null
+  setBackendUrl: (url: string | null) => void
+  setTranscriptionUrl: (url: string | null) => void
+  transcriptionServerStatus: 'checking' | 'online' | 'offline'
+  setTranscriptionServerStatus: (status: 'checking' | 'online' | 'offline') => void
   clearSession: () => void
 }
 
@@ -48,6 +54,12 @@ export const useAppStore = create<AppStore>()(
       setGlobalSearchQuery: (q) => set({ globalSearchQuery: q }),
       appSettings: null,
       setAppSettings: (settings) => set({ appSettings: settings }),
+      backendUrl: null,
+      transcriptionUrl: null,
+      setBackendUrl: (url) => set({ backendUrl: url }),
+      setTranscriptionUrl: (url) => set({ transcriptionUrl: url }),
+      transcriptionServerStatus: 'checking',
+      setTranscriptionServerStatus: (status) => set({ transcriptionServerStatus: status }),
       featureFlags: null,
       setFeatureFlags: (flags) => {
         if (Array.isArray(flags)) {
@@ -84,6 +96,8 @@ export const useAppStore = create<AppStore>()(
           selectedPatientId: null,
           globalSearchQuery: '',
           appSettings: null,
+          backendUrl: null,
+          transcriptionUrl: null,
           featureFlags: null,
         }),
     }),

@@ -447,6 +447,18 @@ def run_ocr(image_bytes: bytes) -> dict:
         f"warning: {low_conf_warning}"
     )
 
+    # After building full_text and cleaned_lines:
+    # Run GatorTron NER on the full text to tag clinical entities
+    ner_result = None
+    try:
+        from ner_engine import tag_text_with_entities, is_model_loaded
+        if is_model_loaded():
+            # Only run NER if model already loaded — do not trigger load during OCR
+            ner_result = tag_text_with_entities(full_text)
+            log.info(f"NER tagged {len(ner_result['entities'])} entities")
+    except Exception as e:
+        log.warning(f"NER post-processing skipped: {e}")
+
     return {
         "text": full_text,
         "lines": cleaned_lines,
@@ -454,4 +466,6 @@ def run_ocr(image_bytes: bytes) -> dict:
         "low_confidence_warning": low_conf_warning,
         "quality": quality,
         "preprocessing_applied": steps_applied,
+        "ner_entities": ner_result["entities"] if ner_result else [],
+        "ner_summary": ner_result["summary"] if ner_result else {},
     }

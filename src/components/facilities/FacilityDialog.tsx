@@ -6,6 +6,7 @@ import { createFacility, updateFacility } from '@/lib/services/facilityService'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { validatePhone } from '@/lib/utils'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,8 @@ export function FacilityDialog({
   facility,
 }: FacilityDialogProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const isEdit = !!facility
   const { toast } = useToast()
 
@@ -91,16 +94,38 @@ export function FacilityDialog({
           address: address.trim(),
           phone: phone.trim(),
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'facility.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'facility', id: facility.id, label: name.trim() },
+            summary: `Updated hospital ${name.trim()}`,
+          })
+        }
+
         toast({
           title: 'Hospital updated',
           description: 'Hospital details have been updated successfully.',
         })
       } else {
-        await createFacility(hospitalId, {
+        const newFac = await createFacility(hospitalId, {
           name: name.trim(),
           address: address.trim(),
           phone: phone.trim(),
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'facility.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'facility', id: newFac.id, label: name.trim() },
+            summary: `Added hospital ${name.trim()}`,
+          })
+        }
+
         toast({
           title: 'Hospital added',
           description: 'New hospital has been registered successfully.',

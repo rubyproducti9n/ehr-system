@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, CheckCircle2, Copy, Check, Loader2, Hospital } from 'lucide-react'
 import { registerHospital } from '@/lib/services/authService'
+import { writeActivityLog } from '@/lib/services/activityLogService'
 import { validateEmail, validatePhone } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -83,6 +84,23 @@ export default function RegisterHospitalPage() {
         adminName: adminName.trim(),
         adminEmail: adminEmail.trim().toLowerCase(),
         adminPassword,
+      })
+
+      await writeActivityLog({
+        hospitalId: result.hospitalId,
+        action: 'auth.register_hospital',
+        performedBy: {
+          uid: result.adminUid,
+          displayName: adminName.trim(),
+          email: adminEmail.trim().toLowerCase(),
+          role: 'admin',
+        },
+        entity: {
+          type: 'hospital',
+          id: result.hospitalId,
+          label: hospitalName.trim(),
+        },
+        summary: `Registered new hospital workspace "${hospitalName.trim()}" (Code: ${result.hospitalCode})`,
       })
 
       setRegisteredCode(result.hospitalCode)
@@ -191,7 +209,7 @@ export default function RegisterHospitalPage() {
           Register Your Hospital
         </CardTitle>
         <CardDescription>
-          Create a new clinical organization and setup the primary administrator account.
+          Create a new hospital organization and setup the primary administrator account.
         </CardDescription>
       </CardHeader>
       <CardContent>

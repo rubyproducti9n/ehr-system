@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Loader2, UserPlus } from 'lucide-react'
 import { registerStaff } from '@/lib/services/authService'
+import { writeActivityLog } from '@/lib/services/activityLogService'
 import { validateEmail } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -59,13 +60,32 @@ export default function RegisterStaffPage() {
 
     setIsSubmitting(true)
     try {
-      await registerStaff({
+      const res = await registerStaff({
         hospitalCode: hospitalCode.toUpperCase().trim(),
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
         role,
       })
+
+      if (res?.hospitalId && res?.uid) {
+        await writeActivityLog({
+          hospitalId: res.hospitalId,
+          action: 'auth.register_staff',
+          performedBy: {
+            uid: res.uid,
+            displayName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            role,
+          },
+          entity: {
+            type: 'staff',
+            id: res.uid,
+            label: fullName.trim(),
+          },
+          summary: `Registered staff account with role ${role}`,
+        })
+      }
 
       toast({
         title: 'Account created successfully',

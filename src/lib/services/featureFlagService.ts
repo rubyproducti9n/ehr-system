@@ -91,6 +91,14 @@ export const DEFAULT_FLAGS: Omit<FeatureFlag, 'updatedAt' | 'updatedBy'>[] = [
     visible: true,
     category: 'experimental',
   },
+  {
+    key: 'live_transcription',
+    label: 'Live Transcription',
+    description: 'Enables real-time audio transcription in Encounter sub-tab using local Sherpa-ONNX model.',
+    enabled: true,
+    visible: true,
+    category: 'experimental',
+  },
 ]
 
 /**

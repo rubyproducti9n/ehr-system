@@ -1,13 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { getHospitalBackendUrl } from '@/lib/server/getHospitalBackendUrl'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const hospitalId = req.headers.get('x-hospital-id')
+  const BACKEND_URL = await getHospitalBackendUrl(hospitalId ?? '')
+
   try {
-    const res = await fetch('http://127.0.0.1:8765/system-info', {
+    const res = await fetch(`${BACKEND_URL}/system-info`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(8000),
       headers: {
         Accept: 'application/json',
-        Origin: 'http://localhost:3000',
       },
     })
     if (!res.ok) throw new Error(`Backend returned ${res.status}`)

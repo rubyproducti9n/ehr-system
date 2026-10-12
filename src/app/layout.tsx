@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
+import { Lato } from 'next/font/google'
 import { Suspense } from 'react'
 import { TopProgressBar } from '@/components/layout/TopProgressBar'
 import './globals.css'
@@ -14,10 +15,16 @@ const geistMono = localFont({
   variable: '--font-geist-mono',
   weight: '100 900',
 })
+const lato = Lato({
+  subsets: ['latin'],
+  weight: ['400', '700', '900'],
+  variable: '--font-lato',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
-  title: 'EHR Platform',
-  description: 'Production-grade Electronic Health Records web platform',
+  title: 'My Aarogyam',
+  description: 'Next-Generation AI-Powered Electronic Health Records Platform',
 }
 
 export default function RootLayout({
@@ -28,7 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={geistSans.variable + ' ' + geistMono.variable + ' antialiased min-h-screen font-sans'}
+        className={`${geistSans.variable} ${geistMono.variable} ${lato.variable} antialiased min-h-screen font-sans`}
       >
         <Suspense fallback={null}>
           <TopProgressBar />

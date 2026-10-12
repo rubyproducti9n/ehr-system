@@ -125,11 +125,12 @@ const formatElapsed = (s: number) =>
 export default function AIDocsDevPage() {
   const currentUser = useAppStore((state) => state.currentUser)
   const userRole = useAppStore((state) => state.userRole)
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const { patients, loading: patientsLoading } = usePatients()
   const { toast } = useToast()
 
   // Backend health
-  const health = useBackendHealth(currentUser?.email ?? '', userRole)
+  const health = useBackendHealth(currentUser?.email ?? '', userRole, hospitalId)
 
   // File & Input state
   const [file, setFile] = useState<File | null>(null)
@@ -184,7 +185,7 @@ export default function AIDocsDevPage() {
     resetReview()
 
     try {
-      const res = await extractTextFromFile(selected, currentUser?.email ?? '', userRole)
+      const res = await extractTextFromFile(selected, currentUser?.email ?? '', userRole, hospitalId)
       setFileText(res.text)
       setPageCount(res.pageCount)
       setExtractionMethod(res.method)
@@ -238,6 +239,7 @@ export default function AIDocsDevPage() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'x-user-email': currentUser.email,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole
@@ -264,8 +266,6 @@ export default function AIDocsDevPage() {
       setIsRunning(false)
     }
   }
-
-  const hospitalId = useAppStore((state) => state.hospitalId)
 
   const handleSave = async () => {
     if (!result?.data || !selectedPatientId || !currentUser?.email || !hospitalId) return

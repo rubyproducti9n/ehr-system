@@ -18,6 +18,7 @@ import {
   createDocument,
   updateDocument,
 } from '@/lib/services/documentService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { DOCUMENT_TYPES, DocumentTypeKey } from '@/lib/documentTypes'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
@@ -61,6 +62,8 @@ export function DocumentDialog({
   const isEdit = !!doc
   const { toast } = useToast()
   const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
+  const hospitalId = useAppStore((state) => state.hospitalId)
   const appSettings = useAppStore((state) => state.appSettings)
   const isFeatureEnabled = useAppStore((state) => state.isFeatureEnabled)
   const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
@@ -181,6 +184,7 @@ export function DocumentDialog({
         method: 'POST',
         headers: {
           'x-user-email': currentUser.email,
+          'x-hospital-id': hospitalId ?? '',
         },
         body: formData,
       })
@@ -244,8 +248,6 @@ export function DocumentDialog({
     return Object.keys(newErrors).length === 0
   }
 
-  const hospitalId = useAppStore((state) => state.hospitalId)
-
   const handleSaveStep2 = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateStep2()) return
@@ -254,7 +256,7 @@ export function DocumentDialog({
     setSubmitting(true)
     try {
       const uploaderName =
-        currentUser?.displayName || currentUser?.email || 'Clinical Staff'
+        currentUser?.displayName || currentUser?.email || 'Medical Staff'
 
       if (isEdit && doc) {
         await updateDocument(hospitalId, patientId, doc.id, {
@@ -263,6 +265,17 @@ export function DocumentDialog({
           annotation: annotation.trim(),
           fileUrl: fileUrl.trim(),
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'document.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'document', id: doc.id, label: title.trim() },
+            summary: `Updated document ${title.trim()}`,
+          })
+        }
+
         toast({
           title: 'Document updated',
           description: 'Document details updated successfully.',
@@ -288,6 +301,17 @@ export function DocumentDialog({
               fileUrl: saved.path,
               uploadedBy: uploaderName,
             })
+
+            if (currentUser && userRole) {
+              await writeActivityLog({
+                hospitalId,
+                action: 'document.create',
+                performedBy: buildPerformedBy(currentUser, userRole),
+                entity: { type: 'document', id: created.id, label: docTitle },
+                summary: `Uploaded document ${docTitle}`,
+              })
+            }
+
             if (!firstSavedDoc) firstSavedDoc = created
           }
         } else {
@@ -300,6 +324,17 @@ export function DocumentDialog({
             fileUrl: fileUrl.trim(),
             uploadedBy: uploaderName,
           })
+
+          if (currentUser && userRole) {
+            await writeActivityLog({
+              hospitalId,
+              action: 'document.create',
+              performedBy: buildPerformedBy(currentUser, userRole),
+              entity: { type: 'document', id: created.id, label: title.trim() },
+              summary: `Added document ${title.trim()}`,
+            })
+          }
+
           firstSavedDoc = created
         }
 
@@ -320,7 +355,7 @@ export function DocumentDialog({
         if (shouldAnalyse && firstSavedDoc) {
           toast({
             title: 'Document saved',
-            description: 'Starting AI analysis and clinical extraction...',
+            description: 'Starting AI analysis and document extraction...',
           })
           onOpenChange(false)
           const encodedFileUrl = encodeURIComponent(firstSavedDoc.fileUrl || '')
@@ -569,7 +604,7 @@ export function DocumentDialog({
                   id="doc-annotation"
                   rows={3}
                   maxLength={500}
-                  placeholder="Enter clinical notes, remarks, or observations..."
+                  placeholder="Enter notes, remarks, or observations..."
                   value={annotation}
                   onChange={(e) => setAnnotation(e.target.value)}
                   disabled={submitting}
@@ -590,7 +625,7 @@ export function DocumentDialog({
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                       <Label htmlFor="auto-analyse-toggle" className="text-xs font-semibold text-slate-900 dark:text-slate-100 cursor-pointer">
-                        Auto-Analyse with AI
+                        Analyse Document Automatically
                       </Label>
                     </div>
                     <Switch
@@ -601,7 +636,7 @@ export function DocumentDialog({
                     />
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Extract medications, dosages, lab tests, encounters, and vitals using Cloud AI immediately after saving.
+                    Extract medications, dosages, lab tests, encounters, and vitals immediately after saving.
                   </p>
                 </div>
               )}

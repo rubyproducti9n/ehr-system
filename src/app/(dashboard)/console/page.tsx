@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import {
   Building2,
@@ -13,12 +13,19 @@ import {
   Sliders,
   Activity,
   CheckCircle2,
+  Download,
+  Loader2,
 } from 'lucide-react'
 import { useAllHospitals } from '@/hooks/useAllHospitals'
 import { useAllAuditLogs } from '@/hooks/useAllAuditLogs'
 import { formatDate } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
+import { db } from '@/lib/firebase'
+import { ref, get } from 'firebase/database'
+import { exportAllSystemDataToPdf } from '@/lib/pdfExport'
 
 interface StatCardProps {
   label: string
@@ -53,6 +60,9 @@ function ConsoleStatCard({ label, value, loading, icon: Icon, colorClass = 'text
 }
 
 export default function ConsolePage() {
+  const { toast } = useToast()
+  const [exporting, setExporting] = useState(false)
+
   const {
     hospitals,
     totalHospitals,
@@ -64,8 +74,133 @@ export default function ConsolePage() {
 
   const { logs, loading: logsLoading } = useAllAuditLogs()
 
+  const handleExportAllPdf = async () => {
+    setExporting(true)
+    try {
+      const snap = await get(ref(db, 'hospitals'))
+      if (!snap.exists()) {
+        toast({
+          title: 'No data',
+          description: 'No hospital tenant records found in database.',
+        })
+        return
+      }
+
+      const rawHospitals = snap.val() as Record<string, any>
+      const hospitalList: any[] = []
+      const patientList: any[] = []
+      const providerList: any[] = []
+      const staffList: any[] = []
+
+      Object.entries(rawHospitals).forEach(([hId, hData]) => {
+        const hName = hData?.profile?.name || 'Unnamed Hospital'
+        const hCode = hData?.profile?.hospitalCode || '—'
+
+        hospitalList.push({
+          id: hId,
+          name: hName,
+          code: hCode,
+          staffCount: Object.keys(hData?.staff || {}).length,
+          patientCount: Object.keys(hData?.patients || {}).length,
+        })
+
+        // Patients
+        if (hData?.patients) {
+          Object.entries(hData.patients).map(([pId, p]: [string, any]) => {
+            patientList.push({
+              name: p.name || 'Unnamed',
+              gender: p.gender || '—',
+              age: p.age || '—',
+              status: p.status || 'active',
+              patientType: p.patientType || '—',
+              doctorName: p.currentDoctorId ? (hData?.providers?.[p.currentDoctorId]?.name || 'Assigned') : 'Unassigned',
+              hospitalName: hName,
+            })
+          })
+        }
+
+        // Providers
+        if (hData?.providers) {
+          Object.entries(hData.providers).map(([prId, pr]: [string, any]) => {
+            providerList.push({
+              name: pr.name || '—',
+              specialty: pr.specialty || '—',
+              phone: pr.phone || '—',
+              email: pr.email || '—',
+              hospitalName: hName,
+            })
+          })
+        }
+
+        // Staff
+        if (hData?.staff) {
+          Object.entries(hData.staff).map(([sUid, s]: [string, any]) => {
+            staffList.push({
+              displayName: s.displayName || '—',
+              email: s.email || '—',
+              role: (s.role || '').toUpperCase(),
+              status: s.isActive !== false ? 'Active' : 'Deactivated',
+              hospitalName: hName,
+            })
+          })
+        }
+      })
+
+      exportAllSystemDataToPdf({
+        hospitals: hospitalList,
+        patients: patientList,
+        providers: providerList,
+        staff: staffList,
+      })
+
+      toast({
+        title: 'Master export generated',
+        description: 'Complete multi-tenant system PDF downloaded successfully.',
+      })
+    } catch (err: unknown) {
+      console.error('Error generating master export:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Failed to export master system data.',
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-8 bg-slate-50 min-h-full text-slate-900">
+      {/* Top action header for Dev Export */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Developer Console
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Global system administration, live tenant telemetry, and master backup controls.
+          </p>
+        </div>
+        <Button
+          onClick={handleExportAllPdf}
+          disabled={exporting || hospitalsLoading}
+          className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-semibold"
+          title="Download all system data (Hospitals, Patients, Providers, Staff) in one PDF"
+        >
+          {exporting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating Full PDF...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Download All Data (PDF)
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* Section 1: System Status Row */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">

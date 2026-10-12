@@ -97,3 +97,53 @@ export function addDrPrefix(name: string): string {
   return `Dr. ${titleCased}`
 }
 
+export function isMicrophoneSupported(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === 'function' &&
+    typeof AudioContext !== 'undefined'
+  )
+}
+
+export function isWebSocketSupported(): boolean {
+  return typeof WebSocket !== 'undefined'
+}
+
+export function isTranscriptionSupported(): boolean {
+  return isMicrophoneSupported() && isWebSocketSupported()
+}
+
+const CLINICAL_KEYWORDS = [
+  // Diseases
+  'diabetes', 'hypertension', 'fever', 'cancer', 'infection', 'asthma',
+  'pneumonia', 'cardiac', 'renal', 'hepatic', 'neurological', 'orthopedic',
+  'fracture', 'anemia', 'thyroid', 'arthritis', 'depression', 'anxiety',
+  'migraine', 'seizure', 'stroke', 'sepsis', 'uti', 'copd', 'tb',
+  // Medicines
+  'tablet', 'capsule', 'injection', 'syrup', 'mg', 'ml', 'dose', 'metformin',
+  'paracetamol', 'amoxicillin', 'ibuprofen', 'omeprazole', 'atorvastatin',
+  'amlodipine', 'losartan', 'aspirin', 'insulin', 'ciprofloxacin',
+  // Procedures
+  'surgery', 'biopsy', 'mri', 'xray', 'x-ray', 'ecg', 'echo', 'ultrasound',
+  'endoscopy', 'dialysis', 'chemotherapy', 'radiation', 'ct scan', 'blood test',
+  // Symptoms
+  'pain', 'swelling', 'bleeding', 'vomiting', 'nausea', 'dizziness', 'cough',
+  'fatigue', 'breathlessness', 'chest pain', 'headache', 'rash', 'allergy',
+]
+
+export function isClinicalQuery(query: string): boolean {
+  const lower = query.toLowerCase().trim()
+  return CLINICAL_KEYWORDS.some(keyword => lower.includes(keyword))
+}
+
+export function shouldUseBackendSearch(
+  query: string,
+  frontendResultCount: number
+): boolean {
+  if (frontendResultCount === 0) return true
+  if (isClinicalQuery(query)) return true
+  if (query.trim().length > 20) return true
+  return false
+}
+

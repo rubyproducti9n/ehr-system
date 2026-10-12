@@ -23,6 +23,8 @@ export interface Provider {
   specialty: string
   facilityId: string
   createdAt: string
+  isImported?: boolean
+  authProvisioned?: boolean
 }
 
 export interface Facility {
@@ -168,6 +170,12 @@ export interface AppSettings {
   storageLocationSetBy: string | null
   extractionMode?: 'online' | 'offline' | null
   aiModel?: string | null
+  backendUrl?: string | null
+  backendUrlSetAt?: string | null
+  backendUrlSetBy?: string | null
+  transcriptionUrl?: string | null
+  transcriptionUrlSetAt?: string | null
+  transcriptionUrlSetBy?: string | null
 }
 
 export interface FeatureFlag {
@@ -179,6 +187,67 @@ export interface FeatureFlag {
   category: 'ai' | 'clinical' | 'admin' | 'dev' | 'experimental'
   updatedAt: string
   updatedBy: string
+}
+
+export type ActivityAction =
+  | 'patient.create'
+  | 'patient.update'
+  | 'patient.delete'
+  | 'patient.status_change'
+  | 'provider.create'
+  | 'provider.update'
+  | 'provider.delete'
+  | 'provider.import'
+  | 'facility.create'
+  | 'facility.update'
+  | 'facility.delete'
+  | 'appointment.create'
+  | 'appointment.update'
+  | 'appointment.status_change'
+  | 'appointment.delete'
+  | 'prescription.create'
+  | 'prescription.update'
+  | 'prescription.status_change'
+  | 'prescription.delete'
+  | 'lab_result.create'
+  | 'lab_result.update'
+  | 'lab_result.delete'
+  | 'document.create'
+  | 'document.update'
+  | 'document.delete'
+  | 'encounter.create'
+  | 'encounter.update'
+  | 'encounter.delete'
+  | 'adt_event.create'
+  | 'adt_event.update'
+  | 'adt_event.delete'
+  | 'staff.role_change'
+  | 'staff.deactivate'
+  | 'staff.reactivate'
+  | 'staff.provision'
+  | 'settings.update'
+  | 'auth.login'
+  | 'auth.logout'
+  | 'auth.register_hospital'
+  | 'auth.register_staff'
+
+export interface ActivityLog {
+  id: string
+  timestamp: string
+  action: ActivityAction
+  performedBy: {
+    uid: string
+    email: string
+    displayName: string
+    role: string
+  }
+  entity: {
+    type: string
+    id: string
+    label: string       // human readable — patient name, provider name, etc
+  }
+  summary: string       // plain English one-line description
+  metadata?: Record<string, any>  // optional extra context — old value, new value, etc
 }
 
 

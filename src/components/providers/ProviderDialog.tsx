@@ -7,6 +7,7 @@ import { useFacilities } from '@/hooks/useFacilities'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { validatePhone, validateEmail, addDrPrefix } from '@/lib/utils'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,8 @@ export function ProviderDialog({
   provider,
 }: ProviderDialogProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const isEdit = !!provider
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
@@ -131,18 +134,40 @@ export function ProviderDialog({
           email: email.trim(),
           facilityId,
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'provider.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'provider', id: provider.id, label: formattedName },
+            summary: `Updated provider ${formattedName}`,
+          })
+        }
+
         toast({
           title: 'Provider updated',
           description: 'Provider details have been updated successfully.',
         })
       } else {
-        await createProvider(hospitalId, {
+        const newProvider = await createProvider(hospitalId, {
           name: formattedName,
           specialty: specialty.trim(),
           phone: phone.trim(),
           email: email.trim(),
           facilityId,
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'provider.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'provider', id: newProvider.id, label: formattedName },
+            summary: `Added provider ${formattedName}`,
+          })
+        }
+
         toast({
           title: 'Provider added',
           description: 'New healthcare provider has been added successfully.',

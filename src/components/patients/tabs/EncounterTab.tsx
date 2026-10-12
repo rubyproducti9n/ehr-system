@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Plus, Stethoscope, Loader2, FileText, Lock } from 'lucide-react'
 import { useEncounters } from '@/hooks/useEncounters'
 import { useProviders } from '@/hooks/useProviders'
@@ -8,8 +8,10 @@ import { useAppStore } from '@/store/useAppStore'
 import { hasPermission } from '@/lib/roles'
 import { createEncounter } from '@/lib/services/encounterService'
 import { updatePatient } from '@/lib/services/patientService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useToast } from '@/hooks/use-toast'
 import { EncounterCard } from './EncounterCard'
+import { TranscriptionPanel } from './TranscriptionPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +27,10 @@ interface EncounterTabProps {
 
 export function EncounterTab({ patientId, showTranscript = true }: EncounterTabProps) {
   const userRole = useAppStore((state) => state.userRole)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const isFeatureVisible = useAppStore((state) => state.isFeatureVisible)
+  const showLiveTranscription = isFeatureVisible('live_transcription')
+
   const { encounters, loading: encLoading, error } = useEncounters(patientId)
   const { providers, loading: providersLoading } = useProviders()
   const { toast } = useToast()
@@ -40,7 +46,6 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
     )
   }
 
-
   // Inline New Encounter form visibility
   const [showNewForm, setShowNewForm] = useState(false)
 
@@ -51,6 +56,9 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
   const [providerId, setProviderId] = useState('')
   const [summary, setSummary] = useState('')
   const [transcript, setTranscript] = useState('')
+
+  const [userHasManuallyEdited, setUserHasManuallyEdited] = useState(false)
+  const lastAutoText = useRef('')
 
   const [errors, setErrors] = useState<{
     visitDate?: string
@@ -64,6 +72,8 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
     setProviderId('')
     setSummary('')
     setTranscript('')
+    setUserHasManuallyEdited(false)
+    lastAutoText.current = ''
     setErrors({})
   }
 
@@ -111,7 +121,7 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
       const isoVisitDate = new Date(visitDate).toISOString()
 
       // 1. Create Encounter
-      await createEncounter(hospitalId, patientId, {
+      const newEnc = await createEncounter(hospitalId, patientId, {
         patientId,
         visitDate: isoVisitDate,
         providerId,
@@ -121,6 +131,16 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
 
       // 2. Update parent patient lastVisitDate automatically
       await updatePatient(hospitalId, patientId, { lastVisitDate: isoVisitDate })
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'encounter.create',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'encounter', id: newEnc.id, label: `Encounter on ${visitDate}` },
+          summary: `Recorded encounter for patient`,
+        })
+      }
 
       toast({
         title: 'Encounter created',
@@ -185,7 +205,7 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
             <div className='flex items-center justify-between border-b pb-3'>
               <h4 className='text-sm font-semibold text-foreground flex items-center gap-2'>
                 <Stethoscope className='h-4 w-4 text-primary' />
-                New Clinical Encounter
+                New Encounter
               </h4>
               <div className='flex items-center gap-2'>
                 <Button
@@ -229,6 +249,8 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
                   <Input
                     id='new-visit-date'
                     type='date'
+                    min='1900-01-01'
+                    max='2100-12-31'
                     value={visitDate}
                     onChange={(e) => setVisitDate(e.target.value)}
                     disabled={saving}
@@ -289,20 +311,59 @@ export function EncounterTab({ patientId, showTranscript = true }: EncounterTabP
               </div>
 
               {showTranscript && (
-                <div className='space-y-1.5'>
-                  <Label htmlFor='new-transcript'>Transcript</Label>
-                  <textarea
-                    id='new-transcript'
-                    rows={4}
-                    placeholder='Paste or type the visit transcript here. AI transcription coming in a future update.'
-                    value={transcript}
-                    onChange={(e) => setTranscript(e.target.value)}
-                    disabled={saving}
-                    className='flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-                  />
-                  <p className='text-xs text-muted-foreground italic'>
-                    AI-powered transcription will be available in Phase 2
-                  </p>
+                <div className='space-y-2'>
+                  <div className='flex items-center justify-between'>
+                    <Label htmlFor='new-transcript'>Transcript</Label>
+                    {userHasManuallyEdited && (
+                      <Button
+                        type='button'
+                        variant='link'
+                        size='sm'
+                        onClick={() => {
+                          setUserHasManuallyEdited(false)
+                          if (lastAutoText.current) {
+                            setTranscript(lastAutoText.current)
+                          }
+                        }}
+                        className='h-auto p-0 text-xs text-primary font-medium'
+                      >
+                        Resume auto-fill
+                      </Button>
+                    )}
+                  </div>
+
+                  {showLiveTranscription && (
+                    <TranscriptionPanel
+                      onTranscriptUpdate={(text) => {
+                        if (!userHasManuallyEdited) {
+                          lastAutoText.current = text
+                          setTranscript(text)
+                        }
+                      }}
+                      disabled={!showLiveTranscription}
+                      patientId={patientId}
+                    />
+                  )}
+
+                  <div className='space-y-1'>
+                    <textarea
+                      id='new-transcript'
+                      rows={4}
+                      placeholder='Type or record the visit transcript...'
+                      value={transcript}
+                      onChange={(e) => {
+                        setTranscript(e.target.value)
+                        if (e.target.value !== lastAutoText.current) {
+                          setUserHasManuallyEdited(true)
+                        }
+                      }}
+                      disabled={saving}
+                      className='flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+                    />
+                    <p className='text-xs text-muted-foreground italic'>
+                      Type manually or use live transcription above
+                    </p>
+                  </div>
                 </div>
               )}
             </form>

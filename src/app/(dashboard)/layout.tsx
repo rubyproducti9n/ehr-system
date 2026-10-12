@@ -26,6 +26,8 @@ export default function DashboardLayout({
   const [isRehydrating, setIsRehydrating] = useState(false)
   const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed)
   const setAppSettings = useAppStore((state) => state.setAppSettings)
+  const setBackendUrl = useAppStore((state) => state.setBackendUrl)
+  const setTranscriptionUrl = useAppStore((state) => state.setTranscriptionUrl)
   const setFeatureFlags = useAppStore((state) => state.setFeatureFlags)
   const currentUser = useAppStore((state) => state.currentUser)
   const hospitalId = useAppStore((state) => state.hospitalId)
@@ -82,9 +84,11 @@ export default function DashboardLayout({
     if (!hospitalId) return
     const unsubscribe = subscribeToSettings(hospitalId, (settings) => {
       setAppSettings(settings)
+      setBackendUrl(settings.backendUrl ?? null)
+      setTranscriptionUrl(settings.transcriptionUrl ?? null)
     })
     return () => unsubscribe()
-  }, [hospitalId, setAppSettings])
+  }, [hospitalId, setAppSettings, setBackendUrl, setTranscriptionUrl])
 
   const [queryClient] = useState(
     () =>

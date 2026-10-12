@@ -77,6 +77,12 @@ export function subscribeToSettings(
         storageLocation: null,
         storageLocationSetAt: null,
         storageLocationSetBy: null,
+        backendUrl: null,
+        backendUrlSetAt: null,
+        backendUrlSetBy: null,
+        transcriptionUrl: null,
+        transcriptionUrlSetAt: null,
+        transcriptionUrlSetBy: null,
       })
       return
     }
@@ -88,6 +94,12 @@ export function subscribeToSettings(
       storageLocationSetBy: (data.storageLocationSetBy as string) || null,
       extractionMode: (data.extractionMode as 'online' | 'offline') || null,
       aiModel: (data.aiModel as string) || null,
+      backendUrl: (data.backendUrl as string) || null,
+      backendUrlSetAt: (data.backendUrlSetAt as string) || null,
+      backendUrlSetBy: (data.backendUrlSetBy as string) || null,
+      transcriptionUrl: (data.transcriptionUrl as string) || null,
+      transcriptionUrlSetAt: (data.transcriptionUrlSetAt as string) || null,
+      transcriptionUrlSetBy: (data.transcriptionUrlSetBy as string) || null,
     })
   })
 }
@@ -115,5 +127,91 @@ export async function setAiModel(
   const settingsRef = ref(db, `hospitals/${hospitalId}/settings`)
   await update(settingsRef, {
     aiModel: model,
+  })
+}
+
+/**
+ * Reads the backend and transcription URLs once from /hospitals/{hospitalId}/settings.
+ */
+export async function getBackendUrls(hospitalId: string): Promise<{
+  backendUrl: string | null
+  transcriptionUrl: string | null
+}> {
+  const settingsRef = ref(db, `hospitals/${hospitalId}/settings`)
+  const snapshot = await get(settingsRef)
+
+  if (!snapshot.exists()) {
+    return {
+      backendUrl: null,
+      transcriptionUrl: null,
+    }
+  }
+
+  const data = snapshot.val() as Record<string, unknown>
+  return {
+    backendUrl: (data.backendUrl as string) || null,
+    transcriptionUrl: (data.transcriptionUrl as string) || null,
+  }
+}
+
+/**
+ * Sets the Document AI FastAPI backend URL in hospital settings.
+ */
+export async function setBackendUrl(
+  hospitalId: string,
+  url: string | null,
+  setBy: string
+): Promise<void> {
+  const settingsRef = ref(db, `hospitals/${hospitalId}/settings`)
+  if (!url || !url.trim()) {
+    await update(settingsRef, {
+      backendUrl: null,
+      backendUrlSetAt: null,
+      backendUrlSetBy: null,
+    })
+    return
+  }
+
+  const trimmed = url.trim().replace(/\/+$/, '')
+  if (!trimmed.startsWith('https://') && !trimmed.startsWith('http://')) {
+    throw new Error('Backend URL must start with http:// or https://')
+  }
+
+  const now = new Date().toISOString()
+  await update(settingsRef, {
+    backendUrl: trimmed,
+    backendUrlSetAt: now,
+    backendUrlSetBy: setBy,
+  })
+}
+
+/**
+ * Sets the Transcription Server (Sherpa-ONNX) WebSocket URL in hospital settings.
+ */
+export async function setTranscriptionUrl(
+  hospitalId: string,
+  url: string | null,
+  setBy: string
+): Promise<void> {
+  const settingsRef = ref(db, `hospitals/${hospitalId}/settings`)
+  if (!url || !url.trim()) {
+    await update(settingsRef, {
+      transcriptionUrl: null,
+      transcriptionUrlSetAt: null,
+      transcriptionUrlSetBy: null,
+    })
+    return
+  }
+
+  const trimmed = url.trim().replace(/\/+$/, '')
+  if (!trimmed.startsWith('wss://') && !trimmed.startsWith('ws://')) {
+    throw new Error('Transcription URL must start with ws:// or wss://')
+  }
+
+  const now = new Date().toISOString()
+  await update(settingsRef, {
+    transcriptionUrl: trimmed,
+    transcriptionUrlSetAt: now,
+    transcriptionUrlSetBy: setBy,
   })
 }

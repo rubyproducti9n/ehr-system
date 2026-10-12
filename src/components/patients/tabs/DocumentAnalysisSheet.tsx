@@ -495,7 +495,7 @@ export function DocumentAnalysisSheet({
       setStep('done')
       toast({
         title: 'Analysis Saved to Record',
-        description: 'Clinical records, audit log, and document status updated.',
+        description: 'Medical records, audit log, and document status updated.',
       })
     } catch (err: unknown) {
       setStep('reviewing')
@@ -523,7 +523,7 @@ export function DocumentAnalysisSheet({
               </SheetTitle>
             </div>
             <SheetDescription className="text-xs text-muted-foreground">
-              Extract and review clinical data from this document
+              Extract and review structured data from this document
             </SheetDescription>
           </SheetHeader>
 

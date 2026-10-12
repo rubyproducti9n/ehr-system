@@ -8,6 +8,7 @@ import { useProviders } from '@/hooks/useProviders'
 import { useAppStore } from '@/store/useAppStore'
 import { hasPermission } from '@/lib/roles'
 import { deleteLabResult } from '@/lib/services/labResultService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { LabResultDialog } from './LabResultDialog'
@@ -145,6 +146,7 @@ function LabResultCard({
 
 export function LabResultsTab({ patientId }: LabResultsTabProps) {
   const userRole = useAppStore((state) => state.userRole)
+  const currentUser = useAppStore((state) => state.currentUser)
   const hospitalId = useAppStore((state) => state.hospitalId)
   const { results, loading: labLoading, error } = useLabResults(patientId)
   const { providers, loading: providersLoading } = useProviders()
@@ -182,8 +184,20 @@ export function LabResultsTab({ patientId }: LabResultsTabProps) {
 
   const handleDelete = async (id: string) => {
     if (!hospitalId) return
+    const resToDelete = results.find((r) => r.id === id)
     try {
       await deleteLabResult(hospitalId, patientId, id)
+
+      if (currentUser && userRole && resToDelete) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'lab_result.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'lab_result', id, label: resToDelete.title },
+          summary: `Deleted lab result ${resToDelete.title}`,
+        })
+      }
+
       toast({
         title: 'Lab result deleted',
         description: 'Lab result has been deleted.',

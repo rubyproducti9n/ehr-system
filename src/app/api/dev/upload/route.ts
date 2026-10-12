@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isDeveloper } from '@/lib/devAccess'
-
-const BACKEND_URL = 'http://127.0.0.1:8765'
+import { getHospitalBackendUrl } from '@/lib/server/getHospitalBackendUrl'
 
 export async function POST(req: NextRequest) {
   const email = req.headers.get('x-user-email')
-  const role = req.headers.get('x-user-role')
+  const hospitalId = req.headers.get('x-hospital-id')
 
-  if (!isDeveloper(email, role)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!email || !email.trim()) {
+    return NextResponse.json({ error: 'Unauthorized: User email required' }, { status: 401 })
   }
+
+  const BACKEND_URL = await getHospitalBackendUrl(hospitalId ?? '')
 
   try {
     const formData = await req.formData()

@@ -13,7 +13,8 @@ export interface GeminiStatus {
 
 export function useGeminiStatus(
   userEmail?: string | null,
-  userRole?: string | null
+  userRole?: string | null,
+  hospitalId?: string | null
 ): GeminiStatus {
   const [geminiState, setGeminiState] = useState<Omit<GeminiStatus, 'refetch'>>({
     status: 'checking',
@@ -38,6 +39,7 @@ export function useGeminiStatus(
     try {
       const headers: Record<string, string> = {
         'x-user-email': userEmail,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole

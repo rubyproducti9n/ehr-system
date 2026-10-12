@@ -1,14 +1,25 @@
 'use client'
 
 import Link from 'next/link'
-import { Edit, ArrowLeft } from 'lucide-react'
+import { Edit, ArrowLeft, ChevronDown } from 'lucide-react'
 import { Patient } from '@/types'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
+import { useAppStore } from '@/store/useAppStore'
+import { useToast } from '@/hooks/use-toast'
+import { updatePatient, updatePatientStatus } from '@/lib/services/patientService'
 import { formatDate, calculateAge, getAvatarColor, getInitials } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface DemographicsPanelProps {
   patient: Patient
@@ -16,8 +27,41 @@ interface DemographicsPanelProps {
 }
 
 export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
+  const { toast } = useToast()
   const { providers } = useProviders()
   const { facilities } = useFacilities()
+
+  const handleStatusChange = async (newStatus: Patient['status']) => {
+    if (patient.status === newStatus || !hospitalId) return
+    try {
+      await updatePatientStatus(hospitalId, patient.id, newStatus)
+
+      if (newStatus === 'discharged' && patient.patientType === 'in-patient') {
+        const today = new Date().toISOString().split('T')[0]
+        await updatePatient(hospitalId, patient.id, {
+          lastVisitDate: today,
+          updatedAt: new Date().toISOString(),
+        })
+        toast({
+          title: 'Patient discharged',
+          description: 'Last visit date has been updated to today.',
+        })
+      } else {
+        toast({
+          title: 'Status updated',
+          description: `Status updated to ${newStatus}`,
+        })
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update patient status'
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: message,
+      })
+    }
+  }
 
   // Resolved names
   const doctor = providers.find((p) => p.id === patient.currentDoctorId)
@@ -58,23 +102,54 @@ export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
               {patient.name}
             </h2>
 
-            {/* Status Badge */}
+            {/* Status Dropdown Selector */}
             <div>
-              {patient.status === 'active' && (
-                <Badge className='bg-emerald-500 hover:bg-emerald-600 text-white border-none'>
-                  Active
-                </Badge>
-              )}
-              {patient.status === 'inactive' && (
-                <Badge className='bg-amber-500 hover:bg-amber-600 text-white border-none'>
-                  Inactive
-                </Badge>
-              )}
-              {patient.status === 'discharged' && (
-                <Badge className='bg-slate-500 hover:bg-slate-600 text-white border-none'>
-                  Discharged
-                </Badge>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type='button' className='inline-flex items-center gap-1 focus:outline-none'>
+                    {patient.status === 'active' && (
+                      <Badge className='bg-emerald-500 hover:bg-emerald-600 text-white border-none cursor-pointer'>
+                        Active <ChevronDown className='h-3 w-3 ml-0.5 opacity-80' />
+                      </Badge>
+                    )}
+                    {patient.status === 'inactive' && (
+                      <Badge className='bg-amber-500 hover:bg-amber-600 text-white border-none cursor-pointer'>
+                        Inactive <ChevronDown className='h-3 w-3 ml-0.5 opacity-80' />
+                      </Badge>
+                    )}
+                    {patient.status === 'discharged' && (
+                      <Badge className='bg-slate-500 hover:bg-slate-600 text-white border-none cursor-pointer'>
+                        Discharged <ChevronDown className='h-3 w-3 ml-0.5 opacity-80' />
+                      </Badge>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='center'>
+                  <DropdownMenuLabel>Update Status</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={patient.status === 'active'}
+                    onClick={() => handleStatusChange('active')}
+                    className='cursor-pointer'
+                  >
+                    Set Active
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={patient.status === 'inactive'}
+                    onClick={() => handleStatusChange('inactive')}
+                    className='cursor-pointer'
+                  >
+                    Set Inactive
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={patient.status === 'discharged'}
+                    onClick={() => handleStatusChange('discharged')}
+                    className='cursor-pointer'
+                  >
+                    Set Discharged
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -141,7 +216,19 @@ export function DemographicsPanel({ patient, onEdit }: DemographicsPanelProps) {
 
           <div className='flex justify-between items-start gap-2'>
             <span className='text-muted-foreground'>Last Visit</span>
-            <span className='font-medium text-foreground text-right'>{formattedLastVisit}</span>
+            <div className='text-right'>
+              <span className='font-medium text-foreground'>{formattedLastVisit}</span>
+              {patient.patientType === 'out-patient' && (
+                <span className='text-[11px] text-muted-foreground block'>
+                  (same-day visit)
+                </span>
+              )}
+              {patient.patientType === 'in-patient' && patient.status === 'discharged' && (
+                <span className='text-[11px] text-muted-foreground block'>
+                  (discharge date)
+                </span>
+              )}
+            </div>
           </div>
 
           <div className='flex justify-between items-start gap-2'>

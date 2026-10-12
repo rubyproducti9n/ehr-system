@@ -13,7 +13,8 @@ export interface ExtractionResult {
 export async function extractTextFromFile(
   file: File,
   userEmail: string,
-  userRole?: string | null
+  userRole?: string | null,
+  hospitalId?: string | null
 ): Promise<ExtractionResult> {
   // Handle PDF files
   if (file.type === 'application/pdf') {
@@ -78,6 +79,7 @@ export async function extractTextFromFile(
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'x-user-email': userEmail,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole

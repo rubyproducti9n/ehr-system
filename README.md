@@ -125,3 +125,22 @@ User accounts can be provisioned through the Firebase Console or via Firebase Ad
 - [ ] HL7 / FHIR standard data export and import pipelines.
 - [ ] Calendar grid and provider schedule availability view in `/scheduling`.
 
+---
+
+## 🔐 Firebase Admin SDK Setup (Required for Cloud Deployment)
+
+When deploying the frontend on Vercel or cloud hosting while running FastAPI and Sherpa-ONNX on clinic premises, Next.js server proxy routes resolve each hospital tenant's custom Cloudflare tunnel backend URL securely using the Firebase Admin SDK:
+
+1. In the [Firebase Console](https://console.firebase.google.com/), open **Project Settings > Service Accounts**.
+2. Click **Generate new private key** and download the JSON credentials file.
+3. Convert the JSON file into a single-line base64 string:
+   ```bash
+   # Linux/macOS
+   base64 -w 0 serviceAccountKey.json
+   # Windows PowerShell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("serviceAccountKey.json"))
+   ```
+4. Add `FIREBASE_ADMIN_SERVICE_ACCOUNT` to your Vercel Project Settings > Environment Variables (or `.env.local` for local production simulation) with the base64 string as its value.
+5. In your clinic's EHR web app under **Settings > AI Server Connection**, paste the Cloudflare tunnel URLs. All proxy API requests will route to the clinic's local machine automatically.
+
+

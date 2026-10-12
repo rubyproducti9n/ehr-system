@@ -1,4 +1,4 @@
-﻿import { Clock } from 'lucide-react'
+import { Clock } from 'lucide-react'
 
 interface Props {
   label: string
@@ -13,7 +13,7 @@ export function SubTabPlaceholder({ label, chunk }: Props) {
       </div>
       <p className='text-sm font-medium text-foreground'>{label} coming in Chunk {chunk}</p>
       <p className='text-xs text-muted-foreground mt-1'>
-        This clinical section will be fully integrated with Firebase data in the upcoming milestone.
+        This section will be fully integrated with Firebase data in the upcoming milestone.
       </p>
     </div>
   )

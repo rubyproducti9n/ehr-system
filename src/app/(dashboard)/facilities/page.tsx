@@ -1,14 +1,17 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Edit2, Trash2, Building2 } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Plus, Edit2, Trash2, Building2, Download, ShieldAlert } from 'lucide-react'
 import { Facility } from '@/types'
 import { useFacilities } from '@/hooks/useFacilities'
 import { deleteFacility } from '@/lib/services/facilityService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useAppStore } from '@/store/useAppStore'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { FacilityDialog } from '@/components/facilities/FacilityDialog'
+import { SortableHeader, SortDirection } from '@/components/shared/SortableHeader'
+import { exportTableToPdf } from '@/lib/pdfExport'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -30,14 +33,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/shared/EmptyState'
-
 import { useRouter } from 'next/navigation'
-import { ShieldAlert } from 'lucide-react'
 
 export default function FacilitiesPage() {
   const router = useRouter()
   const hospitalId = useAppStore((state) => state.hospitalId)
   const userRole = useAppStore((state) => state.userRole)
+  const currentUser = useAppStore((state) => state.currentUser)
   const isSuperAdminOrDev = userRole === 'super_admin' || userRole === 'dev'
   const { facilities, loading, error } = useFacilities()
   const { toast } = useToast()
@@ -52,6 +54,67 @@ export default function FacilitiesPage() {
     null
   )
   const [deleting, setDeleting] = useState(false)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') setSortDirection('desc')
+      else if (sortDirection === 'desc') {
+        setSortField(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const sortedFacilities = useMemo(() => {
+    if (!sortField || !sortDirection) return facilities
+    return [...facilities].sort((a, b) => {
+      let valA = ''
+      let valB = ''
+      if (sortField === 'name') {
+        valA = (a.name || '').toLowerCase()
+        valB = (b.name || '').toLowerCase()
+      } else if (sortField === 'address') {
+        valA = (a.address || '').toLowerCase()
+        valB = (b.address || '').toLowerCase()
+      } else if (sortField === 'phone') {
+        valA = (a.phone || '').toLowerCase()
+        valB = (b.phone || '').toLowerCase()
+      } else if (sortField === 'createdAt') {
+        valA = a.createdAt || ''
+        valB = b.createdAt || ''
+      }
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [facilities, sortField, sortDirection])
+
+  const handleExportPdf = () => {
+    exportTableToPdf({
+      title: 'Hospitals & Medical Facilities Directory',
+      subtitle: 'Registered locations, hospitals, and medical clinics',
+      filename: `hospitals-directory-${new Date().toISOString().split('T')[0]}.pdf`,
+      columns: [
+        { header: 'Hospital / Facility Name', dataKey: 'name' },
+        { header: 'Address', dataKey: 'address' },
+        { header: 'Phone', dataKey: 'phone' },
+        { header: 'Created', dataKey: 'createdAt' },
+      ],
+      data: sortedFacilities.map((f) => ({
+        name: f.name + (f.id.endsWith('_default') ? ' (Default)' : ''),
+        address: f.address || '—',
+        phone: f.phone || '—',
+        createdAt: f.createdAt ? formatDate(f.createdAt) : '—',
+      })),
+    })
+  }
 
   const handleOpenAdd = () => {
     setSelectedFacility(undefined)
@@ -73,6 +136,17 @@ export default function FacilitiesPage() {
     setDeleting(true)
     try {
       await deleteFacility(hospitalId, facilityToDelete.id)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'facility.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'facility', id: facilityToDelete.id, label: facilityToDelete.name },
+          summary: `Deleted hospital ${facilityToDelete.name}`,
+        })
+      }
+
       toast({
         title: 'Hospital deleted',
         description: 'Hospital deleted',
@@ -119,15 +193,27 @@ export default function FacilitiesPage() {
       <div className='flex items-center justify-between'>
         <div>
           <p className='text-sm text-muted-foreground'>
-            Manage clinical facilities, clinics, and hospital locations.
+            Manage facilities, clinics, and hospital locations.
           </p>
         </div>
-        {isSuperAdminOrDev && (
-          <Button onClick={handleOpenAdd} className='gap-2'>
-            <Plus className='h-4 w-4' />
-            + Add Hospital
+        <div className='flex items-center gap-2'>
+          <Button
+            variant='outline'
+            onClick={handleExportPdf}
+            disabled={loading || facilities.length === 0}
+            className='gap-2'
+            title='Download hospitals list as PDF'
+          >
+            <Download className='h-4 w-4' />
+            Download PDF
           </Button>
-        )}
+          {isSuperAdminOrDev && (
+            <Button onClick={handleOpenAdd} className='gap-2'>
+              <Plus className='h-4 w-4' />
+              + Add Hospital
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -141,10 +227,42 @@ export default function FacilitiesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className='font-semibold'>Hospital Name</TableHead>
-              <TableHead className='font-semibold'>Address</TableHead>
-              <TableHead className='font-semibold'>Phone</TableHead>
-              <TableHead className='font-semibold'>Created</TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Hospital Name"
+                  field="name"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Address"
+                  field="address"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Phone"
+                  field="phone"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Created"
+                  field="createdAt"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
               {isSuperAdminOrDev && (
                 <TableHead className='text-right font-semibold'>Actions</TableHead>
               )}
@@ -177,7 +295,7 @@ export default function FacilitiesPage() {
                   )}
                 </TableRow>
               ))
-            ) : facilities.length === 0 ? (
+            ) : sortedFacilities.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={isSuperAdminOrDev ? 5 : 4} className='p-0 border-none'>
                   <EmptyState
@@ -192,7 +310,7 @@ export default function FacilitiesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              facilities.map((facility) => {
+              sortedFacilities.map((facility) => {
                 const isDefault = facility.id.endsWith('_default')
                 return (
                   <TableRow key={facility.id}>

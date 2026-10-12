@@ -22,4 +22,4 @@ const db: Database = getDatabase(app)
 // These paths are not written to in production — dev layout gate prevents access
 
 export { app, auth, db }
-
+export default db

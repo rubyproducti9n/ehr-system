@@ -11,6 +11,7 @@ import {
   deletePrescription,
   updatePrescriptionStatus,
 } from '@/lib/services/prescriptionService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { PrescriptionDialog } from './PrescriptionDialog'
@@ -45,6 +46,7 @@ type FilterStatus = 'all' | 'active' | 'completed' | 'discontinued'
 
 export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
   const userRole = useAppStore((state) => state.userRole)
+  const currentUser = useAppStore((state) => state.currentUser)
   const hospitalId = useAppStore((state) => state.hospitalId)
   const {
     prescriptions,
@@ -118,6 +120,17 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
     if (rx.status === status || !hospitalId) return
     try {
       await updatePrescriptionStatus(hospitalId, patientId, rx.id, status)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'prescription.status_change',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'prescription', id: rx.id, label: rx.medicationName },
+          summary: `Changed prescription status to ${status} for ${rx.medicationName}`,
+        })
+      }
+
       toast({
         title: 'Prescription status updated',
         description: `Status updated to ${status}`,
@@ -134,9 +147,21 @@ export function PrescriptionsTab({ patientId }: PrescriptionsTabProps) {
 
   const handleConfirmDelete = async (id: string) => {
     if (!hospitalId) return
+    const rxToDelete = prescriptions.find((r) => r.id === id)
     setSubmittingDelete(true)
     try {
       await deletePrescription(hospitalId, patientId, id)
+
+      if (currentUser && userRole && rxToDelete) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'prescription.delete',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'prescription', id, label: rxToDelete.medicationName },
+          summary: `Deleted prescription ${rxToDelete.medicationName}`,
+        })
+      }
+
       toast({
         title: 'Prescription deleted',
         description: 'Prescription deleted',

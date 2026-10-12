@@ -50,8 +50,17 @@ GENERATION_CONFIG = {
 
 SERVER_HOST = os.getenv("HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("PORT", 8765))
-DEFAULT_STORAGE_ROOT = PROJECT_ROOT / "docs"
-STORAGE_ROOT = os.getenv("STORAGE_ROOT") or str(DEFAULT_STORAGE_ROOT)
+DEFAULT_STORAGE_ROOT = (PROJECT_ROOT / "docs").resolve()
+
+_raw_storage = os.getenv("STORAGE_ROOT", "").strip()
+if _raw_storage:
+    _storage_path = Path(_raw_storage)
+    if not _storage_path.is_absolute():
+        STORAGE_ROOT = str((PROJECT_ROOT / _storage_path).resolve())
+    else:
+        STORAGE_ROOT = str(_storage_path.resolve())
+else:
+    STORAGE_ROOT = str(DEFAULT_STORAGE_ROOT)
 
 
 def get_active_model_path() -> Path:
@@ -77,3 +86,34 @@ def get_model_info() -> dict:
         "n_ctx": INFERENCE_CONFIG["n_ctx"],
         "n_threads": INFERENCE_CONFIG["n_threads"],
     }
+
+
+OMI_MED_STT_MODEL_PATH = os.getenv(
+    "OMI_MED_STT_MODEL_PATH",
+    str(PROJECT_ROOT / "model" / "omi-med-stt-v1")
+)
+TRANSCRIPTION_HOST = os.getenv("TRANSCRIPTION_HOST", "127.0.0.1")
+TRANSCRIPTION_PORT = int(os.getenv("TRANSCRIPTION_PORT", "8000"))
+TRANSCRIPTION_CHUNK_SECONDS = float(os.getenv("TRANSCRIPTION_CHUNK_SECONDS", "2.0"))
+
+EMBEDDING_MODEL_PATH = os.getenv(
+    "EMBEDDING_MODEL_PATH",
+    str(PROJECT_ROOT / "model" / "gemma-2-embedding")
+)
+CHROMA_DB_PATH = os.getenv(
+    "CHROMA_DB_PATH",
+    str(PROJECT_ROOT / "backend" / "chroma_db")
+)
+EMBEDDING_LAZY_LOAD = os.getenv("EMBEDDING_LAZY_LOAD", "true").lower() == "true"
+SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "10"))
+SEARCH_MIN_SCORE = float(os.getenv("SEARCH_MIN_SCORE", "0.35"))
+
+GATORTRON_ONNX_PATH = os.getenv(
+    "GATORTRON_ONNX_PATH",
+    str(PROJECT_ROOT / "model" / "gatortron-onnx")
+)
+GATORTRON_IDLE_UNLOAD_SECONDS = int(os.getenv("GATORTRON_IDLE_UNLOAD_SECONDS", "600"))
+NER_MIN_CONFIDENCE = float(os.getenv("NER_MIN_CONFIDENCE", "0.70"))
+
+
+

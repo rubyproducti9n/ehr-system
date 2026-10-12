@@ -7,6 +7,7 @@ import { usePatients } from '@/hooks/usePatients'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
 import { createAppointment, updateAppointment } from '@/lib/services/appointmentService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useToast } from '@/hooks/use-toast'
 import { useAppStore } from '@/store/useAppStore'
 import {
@@ -31,6 +32,9 @@ export function AppointmentSheet({
   open,
   onOpenChange,
 }: AppointmentSheetProps) {
+  const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const { toast } = useToast()
   const { patients, loading: patientsLoading } = usePatients()
   const { providers, loading: providersLoading } = useProviders()
@@ -175,8 +179,6 @@ export function AppointmentSheet({
     return Object.keys(newErrors).length === 0
   }
 
-  const hospitalId = useAppStore((state) => state.hospitalId)
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
@@ -204,12 +206,22 @@ export function AppointmentSheet({
           notes: notes.trim(),
         })
 
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'appointment.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'appointment', id: appointment.id, label: `${resolvedPatientName} with ${resolvedProviderName}` },
+            summary: `Updated appointment for ${resolvedPatientName}`,
+          })
+        }
+
         toast({
           title: 'Appointment updated',
           description: 'The appointment has been successfully updated.',
         })
       } else {
-        await createAppointment(hospitalId, {
+        const newApt = await createAppointment(hospitalId, {
           patientId,
           patientName: resolvedPatientName,
           providerId,
@@ -219,6 +231,16 @@ export function AppointmentSheet({
           status,
           notes: notes.trim(),
         })
+
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'appointment.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'appointment', id: newApt.id, label: `${resolvedPatientName} with ${resolvedProviderName}` },
+            summary: `Scheduled appointment for ${resolvedPatientName}`,
+          })
+        }
 
         toast({
           title: 'Appointment scheduled',
@@ -249,7 +271,7 @@ export function AppointmentSheet({
           <SheetDescription>
             {isEdit
               ? 'Update appointment details, provider assignment, or status.'
-              : 'Schedule a clinical appointment for a patient.'}
+              : 'Schedule an appointment for a patient.'}
           </SheetDescription>
         </SheetHeader>
 
@@ -356,7 +378,8 @@ export function AppointmentSheet({
               <Input
                 id="dateInput"
                 type="date"
-                min={isEdit ? undefined : todayStr}
+                min={isEdit ? '1900-01-01' : (todayStr || '1900-01-01')}
+                max="2100-12-31"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 disabled={submitting}
@@ -416,7 +439,7 @@ export function AppointmentSheet({
             </div>
             <textarea
               id="notesInput"
-              placeholder="Clinical reason for visit, prep instructions, etc."
+              placeholder="Reason for visit, prep instructions, etc."
               rows={3}
               maxLength={300}
               value={notes}

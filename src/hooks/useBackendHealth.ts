@@ -11,7 +11,11 @@ export interface BackendHealth {
   checkHealth: () => Promise<void>
 }
 
-export function useBackendHealth(userEmail: string, userRole?: string | null): BackendHealth {
+export function useBackendHealth(
+  userEmail: string,
+  userRole?: string | null,
+  hospitalId?: string | null
+): BackendHealth {
   const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [modelName, setModelName] = useState<string | null>(null)
   const [gpuLayers, setGpuLayers] = useState<number | null>(null)
@@ -24,6 +28,7 @@ export function useBackendHealth(userEmail: string, userRole?: string | null): B
     try {
       const headers: Record<string, string> = {
         'x-user-email': userEmail,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole

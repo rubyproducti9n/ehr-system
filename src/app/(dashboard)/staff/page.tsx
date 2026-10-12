@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Users2,
   Copy,
   Check,
-  Lock,
+  LockKeyhole,
   MoreHorizontal,
   UserPlus,
   Shield,
@@ -13,17 +14,22 @@ import {
   Headphones,
   UserCheck,
   UserX,
+  Download,
 } from 'lucide-react'
 import { StaffMember } from '@/types'
 import { useHospitalStaff } from '@/hooks/useHospitalStaff'
 import { useAppStore } from '@/store/useAppStore'
 import { hasPermission } from '@/lib/roles'
 import { updateStaffRole, deactivateStaffMember, reactivateStaffMember } from '@/lib/services/authService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { formatDate, cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { SortableHeader, SortDirection } from '@/components/shared/SortableHeader'
+import { exportTableToPdf } from '@/lib/pdfExport'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip } from '@/components/ui/tooltip'
 import {
   Table,
   TableHeader,
@@ -50,6 +56,7 @@ import {
 import { EmptyState } from '@/components/shared/EmptyState'
 
 export default function StaffManagementPage() {
+  const router = useRouter()
   const { staff, loading, error, refresh } = useHospitalStaff()
   const hospitalName = useAppStore((state) => state.hospitalName)
   const hospitalCode = useAppStore((state) => state.hospitalCode)
@@ -58,6 +65,12 @@ export default function StaffManagementPage() {
   const currentUser = useAppStore((state) => state.currentUser)
   const { toast } = useToast()
 
+  useEffect(() => {
+    if (!userRole) {
+      router.replace('/')
+    }
+  }, [userRole, router])
+
   const [copiedCode, setCopiedCode] = useState(false)
   const [copiedDialogCode, setCopiedDialogCode] = useState(false)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
@@ -65,6 +78,72 @@ export default function StaffManagementPage() {
   // Action states
   const [deactivatingUid, setDeactivatingUid] = useState<string | null>(null)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') setSortDirection('desc')
+      else if (sortDirection === 'desc') {
+        setSortField(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const sortedStaff = useMemo(() => {
+    if (!sortField || !sortDirection) return staff
+    return [...staff].sort((a, b) => {
+      let valA = ''
+      let valB = ''
+      if (sortField === 'name') {
+        valA = (a.displayName || '').toLowerCase()
+        valB = (b.displayName || '').toLowerCase()
+      } else if (sortField === 'email') {
+        valA = (a.email || '').toLowerCase()
+        valB = (b.email || '').toLowerCase()
+      } else if (sortField === 'role') {
+        valA = (a.role || '').toLowerCase()
+        valB = (b.role || '').toLowerCase()
+      } else if (sortField === 'status') {
+        valA = a.isActive ? 'active' : 'inactive'
+        valB = b.isActive ? 'active' : 'inactive'
+      } else if (sortField === 'joined') {
+        valA = a.joinedAt || ''
+        valB = b.joinedAt || ''
+      }
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [staff, sortField, sortDirection])
+
+  const handleExportPdf = () => {
+    exportTableToPdf({
+      title: 'Hospital Staff Directory',
+      subtitle: `${hospitalName || 'Hospital'} Staff Members & Roles`,
+      filename: `staff-directory-${new Date().toISOString().split('T')[0]}.pdf`,
+      columns: [
+        { header: 'Full Name', dataKey: 'displayName' },
+        { header: 'Email Address', dataKey: 'email' },
+        { header: 'System Role', dataKey: 'role' },
+        { header: 'Account Status', dataKey: 'status' },
+        { header: 'Joined Date', dataKey: 'joined' },
+      ],
+      data: sortedStaff.map((s) => ({
+        displayName: s.displayName || '—',
+        email: s.email || '—',
+        role: s.role.replace('_', ' ').toUpperCase(),
+        status: s.isActive !== false ? 'Active' : 'Deactivated',
+        joined: s.joinedAt ? formatDate(s.joinedAt) : '—',
+      })),
+    })
+  }
 
   const handleCopyCode = (isDialog = false) => {
     if (!hospitalCode) return
@@ -88,6 +167,22 @@ export default function StaffManagementPage() {
     setActionInProgress(member.uid)
     try {
       await updateStaffRole(hospitalId, member.uid, newRole)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'staff.role_change',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: {
+            type: 'staff',
+            id: member.uid,
+            label: member.displayName || member.email,
+          },
+          summary: `Changed role of ${member.displayName || member.email} from ${member.role} to ${newRole}`,
+          metadata: { oldRole: member.role, newRole },
+        })
+      }
+
       toast({
         title: 'Role updated',
         description: `${member.displayName}'s role updated to ${newRole.replace('_', ' ')}.`,
@@ -117,6 +212,21 @@ export default function StaffManagementPage() {
     setActionInProgress(member.uid)
     try {
       await deactivateStaffMember(hospitalId, member.uid)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'staff.deactivate',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: {
+            type: 'staff',
+            id: member.uid,
+            label: member.displayName || member.email,
+          },
+          summary: `Deactivated staff account for ${member.displayName || member.email}`,
+        })
+      }
+
       toast({
         title: 'Staff member deactivated',
         description: `${member.displayName} has been deactivated.`,
@@ -139,6 +249,21 @@ export default function StaffManagementPage() {
     setActionInProgress(member.uid)
     try {
       await reactivateStaffMember(hospitalId, member.uid)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'staff.reactivate',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: {
+            type: 'staff',
+            id: member.uid,
+            label: member.displayName || member.email,
+          },
+          summary: `Reactivated staff account for ${member.displayName || member.email}`,
+        })
+      }
+
       toast({
         title: 'Staff member reactivated',
         description: `${member.displayName} has been reactivated.`,
@@ -216,6 +341,7 @@ export default function StaffManagementPage() {
     }
   }
 
+  const canManage = hasPermission(userRole, 'canManageStaff')
   const isSuperAdminOrDev = userRole === 'super_admin' || userRole === 'dev'
 
   return (
@@ -255,15 +381,27 @@ export default function StaffManagementPage() {
           </div>
         </div>
 
-        {isSuperAdminOrDev && (
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <Button
-            onClick={() => setInviteDialogOpen(true)}
-            className="gap-2 self-start sm:self-auto"
+            variant="outline"
+            onClick={handleExportPdf}
+            disabled={loading || staff.length === 0}
+            className="gap-2"
+            title="Download staff list as PDF"
           >
-            <UserPlus className="h-4 w-4" />
-            Invite Staff
+            <Download className="h-4 w-4" />
+            Download PDF
           </Button>
-        )}
+          {canManage && (
+            <Button
+              onClick={() => setInviteDialogOpen(true)}
+              className="gap-2"
+            >
+              <UserPlus className="h-4 w-4" />
+              Invite Staff
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -277,15 +415,53 @@ export default function StaffManagementPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="font-semibold">Name</TableHead>
-              <TableHead className="font-semibold">Email</TableHead>
-              <TableHead className="font-semibold">Role</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
-              {isSuperAdminOrDev && (
-                <>
-                  <TableHead className="font-semibold">Joined</TableHead>
-                  <TableHead className="text-right font-semibold">Actions</TableHead>
-                </>
+              <TableHead>
+                <SortableHeader
+                  label="Name"
+                  field="name"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Email"
+                  field="email"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Role"
+                  field="role"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Status"
+                  field="status"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              <TableHead>
+                <SortableHeader
+                  label="Joined"
+                  field="joined"
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHead>
+              {canManage && (
+                <TableHead className="text-right font-semibold">Actions</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -305,30 +481,32 @@ export default function StaffManagementPage() {
                   <TableCell>
                     <Skeleton className="h-5 w-16" />
                   </TableCell>
-                  {isSuperAdminOrDev && (
-                    <>
-                      <TableCell>
-                        <Skeleton className="h-5 w-24" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-8 w-16 ml-auto" />
-                      </TableCell>
-                    </>
+                  <TableCell>
+                    <Skeleton className="h-5 w-24" />
+                  </TableCell>
+                  {canManage && (
+                    <TableCell className="text-right">
+                      <Skeleton className="h-8 w-16 ml-auto" />
+                    </TableCell>
                   )}
                 </TableRow>
               ))
-            ) : staff.length === 0 ? (
+            ) : sortedStaff.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdminOrDev ? 6 : 4} className="p-0 border-none">
+                <TableCell colSpan={canManage ? 6 : 5} className="p-0 border-none">
                   <EmptyState
                     icon={Users2}
-                    title="No staff members yet"
-                    description={isSuperAdminOrDev ? "Share your hospital code to invite staff." : "No staff members found."}
+                    title={canManage ? "No staff members yet" : "No staff members"}
+                    description={
+                      canManage
+                        ? "Share your hospital code to invite staff."
+                        : "Your hospital has no staff members listed yet."
+                    }
                   />
                 </TableCell>
               </TableRow>
             ) : (
-              staff.map((member) => {
+              sortedStaff.map((member) => {
                 const isSuperAdmin = member.role === 'super_admin'
                 const isSelf = member.uid === currentUser?.uid
                 const isDeactivating = deactivatingUid === member.uid
@@ -338,7 +516,7 @@ export default function StaffManagementPage() {
                 const canDeactivate =
                   !isSuperAdmin &&
                   !isSelf &&
-                  (userRole === 'super_admin' || (userRole === 'admin' && member.role !== 'admin'))
+                  (userRole === 'super_admin' || userRole === 'dev' || (userRole === 'admin' && member.role !== 'admin' && member.role !== 'dev'))
 
                 return (
                   <TableRow
@@ -348,8 +526,17 @@ export default function StaffManagementPage() {
                     )}
                   >
                     {/* Name */}
-                    <TableCell className="font-semibold text-foreground">
-                      {member.displayName || 'Unnamed Staff'}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">
+                          {member.displayName || 'Unnamed Staff'}
+                        </span>
+                        {member.uid === currentUser?.uid && (
+                          <span className="text-xs bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5 font-medium">
+                            You
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Email */}
@@ -375,24 +562,24 @@ export default function StaffManagementPage() {
                       )}
                     </TableCell>
 
-                    {/* Joined - Super Admin / Dev only */}
-                    {isSuperAdminOrDev && (
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDate(member.joinedAt)}
-                      </TableCell>
-                    )}
+                    {/* Joined */}
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDate(member.joinedAt)}
+                    </TableCell>
 
-                    {/* Actions - Super Admin / Dev only */}
-                    {isSuperAdminOrDev && (
+                    {/* Actions - visible only when canManageStaff is true */}
+                    {canManage && (
                       <TableCell className="text-right">
                         {isSuperAdmin ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground italic font-normal">
-                            <Lock className="h-3 w-3" /> Cannot modify
-                          </span>
+                          <div className="inline-flex justify-end">
+                            <Tooltip content="Cannot modify super admin" side="left">
+                              <span className="inline-flex items-center p-1 text-muted-foreground hover:text-foreground cursor-default">
+                                <LockKeyhole className="h-4 w-4" />
+                              </span>
+                            </Tooltip>
+                          </div>
                         ) : isSelf ? (
-                          <Badge variant="outline" className="text-xs font-semibold">
-                            You
-                          </Badge>
+                          null
                         ) : isDeactivating ? (
                           <div className="flex items-center justify-end gap-1">
                             <span className="text-xs font-medium text-destructive mr-1">

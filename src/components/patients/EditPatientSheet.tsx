@@ -9,6 +9,7 @@ import { useProviders } from '@/hooks/useProviders'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { calculateAge } from '@/lib/utils'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { PatientFormFields } from '@/components/patients/PatientFormFields'
 import {
   Sheet,
@@ -31,6 +32,8 @@ export function EditPatientSheet({
   onOpenChange,
 }: EditPatientSheetProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { providers, loading: providersLoading } = useProviders()
@@ -145,11 +148,20 @@ export function EditPatientSheet({
       newErrors.patientType = 'Patient type is required'
     }
 
-    if (patientType && !admitDate) {
-      newErrors.admitDate = 'Admit date is required'
-    } else if (patientType && admitDate) {
+    let effectiveAdmitDate = admitDate
+    if (patientType === 'out-patient') {
       const todayIso = new Date().toISOString().split('T')[0]
-      if (admitDate > todayIso) {
+      effectiveAdmitDate = todayIso
+      if (admitDate !== todayIso) {
+        setAdmitDate(todayIso)
+      }
+    }
+
+    if (patientType === 'in-patient' && !effectiveAdmitDate) {
+      newErrors.admitDate = 'Admit date is required'
+    } else if (patientType && effectiveAdmitDate) {
+      const todayIso = new Date().toISOString().split('T')[0]
+      if (effectiveAdmitDate > todayIso) {
         newErrors.admitDate = 'Admit date cannot be in the future'
       }
     }
@@ -173,7 +185,10 @@ export function EditPatientSheet({
 
       const age = calculateAge(dob)
 
-      await updatePatient(hospitalId, patient.id, {
+      const isDischargingInPatient = status === 'discharged' && patientType === 'in-patient'
+      const today = new Date().toISOString().split('T')[0]
+
+      const updatePayload = {
         name: name.trim(),
         gender: gender as 'male' | 'female' | 'other',
         dob,
@@ -184,12 +199,33 @@ export function EditPatientSheet({
         facilityId,
         patientType: (patientType || null) as Patient['patientType'],
         admitDate: admitDate || null,
-      })
+        ...(isDischargingInPatient ? { lastVisitDate: today } : {}),
+      }
 
-      toast({
-        title: 'Patient updated',
-        description: 'Patient records have been successfully updated.',
-      })
+      await updatePatient(hospitalId, patient.id, updatePayload)
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'patient.update',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'patient', id: patient.id, label: name.trim() },
+          summary: `Updated patient ${name.trim()}`,
+          metadata: { updatedFields: Object.keys(updatePayload) },
+        })
+      }
+
+      if (isDischargingInPatient) {
+        toast({
+          title: 'Patient discharged',
+          description: 'Last visit date has been updated to today.',
+        })
+      } else {
+        toast({
+          title: 'Patient updated',
+          description: 'Patient records have been successfully updated.',
+        })
+      }
 
       onOpenChange(false)
     } catch (err: unknown) {
@@ -211,7 +247,7 @@ export function EditPatientSheet({
         <SheetHeader className='pb-4'>
           <SheetTitle className='text-xl'>Edit Patient</SheetTitle>
           <SheetDescription>
-            Modify patient demographic details and clinical assignments
+            Modify patient demographic details, hospital and doctor assignments
           </SheetDescription>
         </SheetHeader>
 

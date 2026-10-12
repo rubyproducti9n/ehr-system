@@ -108,6 +108,14 @@ export function PatientFormFields({
     }
   }, [facilities, facilityId, onFacilityChange])
 
+  // Auto-set admitDate to today when patientType is out-patient
+  useEffect(() => {
+    if (patientType === 'out-patient') {
+      const today = new Date().toISOString().split('T')[0]
+      setAdmitDate(today)
+    }
+  }, [patientType, setAdmitDate])
+
   const selectedDoctor = useMemo(() => {
     return filteredProviders.find((p) => p.id === currentDoctorId)
   }, [filteredProviders, currentDoctorId])
@@ -173,6 +181,8 @@ export function PatientFormFields({
             <Input
               id='patient-dob'
               type='date'
+              min='1900-01-01'
+              max='2100-12-31'
               value={dob}
               onChange={(e) => setDob(e.target.value)}
               disabled={disabled}
@@ -205,10 +215,10 @@ export function PatientFormFields({
 
       <Separator />
 
-      {/* Section 2: Clinical Assignment */}
+      {/* Section 2: Hospital & Doctor Assignment */}
       <div className='space-y-4'>
         <h3 className='text-sm font-semibold text-foreground uppercase tracking-wider'>
-          Section 2 — Clinical Assignment
+          Section 2 — Hospital & Doctor Assignment
         </h3>
 
         <div className='space-y-1.5'>
@@ -432,7 +442,7 @@ export function PatientFormFields({
           )}
         </div>
 
-        {patientType && (
+        {patientType === 'in-patient' && (
           <div className='space-y-1.5'>
             <Label htmlFor='patient-admit-date'>
               Admit Date <span className='text-destructive'>*</span>
@@ -440,7 +450,8 @@ export function PatientFormFields({
             <Input
               id='patient-admit-date'
               type='date'
-              max={new Date().toISOString().split('T')[0]}
+              min='1900-01-01'
+              max='2100-12-31'
               value={admitDate}
               onChange={(e) => setAdmitDate(e.target.value)}
               disabled={disabled}

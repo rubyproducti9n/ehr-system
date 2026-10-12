@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { AdtEvent } from '@/types'
 import { createAdtEvent, updateAdtEvent } from '@/lib/services/adtService'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -43,6 +44,8 @@ export function AdtEventDialog({
   onOpenChange,
 }: AdtEventDialogProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const isEdit = !!event
   const { toast } = useToast()
 
@@ -126,11 +129,29 @@ export function AdtEventDialog({
 
       if (isEdit && event) {
         await updateAdtEvent(hospitalId, patientId, event.id, payload)
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'adt_event.update',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'adt_event', id: event.id, label: `ADT Event (${event.id})` },
+            summary: `Updated ADT event for patient`,
+          })
+        }
       } else {
-        await createAdtEvent(hospitalId, patientId, {
+        const newRef = await createAdtEvent(hospitalId, patientId, {
           patientId,
           ...payload,
         })
+        if (currentUser && userRole) {
+          await writeActivityLog({
+            hospitalId,
+            action: 'adt_event.create',
+            performedBy: buildPerformedBy(currentUser, userRole),
+            entity: { type: 'adt_event', id: newRef?.id ?? 'new', label: 'ADT Event' },
+            summary: `Created ADT event for patient`,
+          })
+        }
       }
 
       toast({
@@ -171,6 +192,8 @@ export function AdtEventDialog({
             <Input
               id='effective-date'
               type='date'
+              min='1900-01-01'
+              max='2100-12-31'
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
               disabled={submitting}
@@ -186,6 +209,8 @@ export function AdtEventDialog({
               <Input
                 id='admit-date'
                 type='date'
+                min='1900-01-01'
+                max='2100-12-31'
                 value={admitDate}
                 onChange={(e) => setAdmitDate(e.target.value)}
                 disabled={submitting}
@@ -197,6 +222,8 @@ export function AdtEventDialog({
               <Input
                 id='discharged-date'
                 type='date'
+                min='1900-01-01'
+                max='2100-12-31'
                 value={dischargedDate}
                 onChange={(e) => setDischargedDate(e.target.value)}
                 disabled={submitting}
@@ -212,6 +239,8 @@ export function AdtEventDialog({
             <Input
               id='readmit-date'
               type='date'
+              min='1900-01-01'
+              max='2100-12-31'
               value={reAdmitDate}
               onChange={(e) => setReAdmitDate(e.target.value)}
               disabled={submitting}
@@ -232,7 +261,7 @@ export function AdtEventDialog({
               id='adt-notes'
               rows={3}
               maxLength={500}
-              placeholder='Enter admission/discharge details, transfer reasons, or clinical notes...'
+              placeholder='Enter admission/discharge details, transfer reasons, or remarks...'
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={submitting}

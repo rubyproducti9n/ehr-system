@@ -3,13 +3,14 @@
 import { useState, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Patient } from '@/types'
-import { createPatient } from '@/lib/services/patientService'
+import { createPatient, updatePatient } from '@/lib/services/patientService'
 import { createAdtEvent } from '@/lib/services/adtService'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useProviders } from '@/hooks/useProviders'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
 import { calculateAge } from '@/lib/utils'
+import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { PatientFormFields } from '@/components/patients/PatientFormFields'
 import {
   Sheet,
@@ -35,6 +36,8 @@ interface NewPatientSheetProps {
 
 export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
   const hospitalId = useAppStore((state) => state.hospitalId)
+  const currentUser = useAppStore((state) => state.currentUser)
+  const userRole = useAppStore((state) => state.userRole)
   const { toast } = useToast()
   const { facilities, loading: facilitiesLoading } = useFacilities()
   const { providers, loading: providersLoading } = useProviders()
@@ -174,13 +177,20 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
       newErrors.patientType = 'Patient type is required'
     }
 
-    if (patientType && !admitDate) {
+    let effectiveAdmitDate = admitDate
+    if (patientType === 'out-patient') {
+      const todayIso = new Date().toISOString().split('T')[0]
+      effectiveAdmitDate = todayIso
+      if (admitDate !== todayIso) {
+        setAdmitDate(todayIso)
+      }
+    }
+
+    if (patientType === 'in-patient' && !effectiveAdmitDate) {
       newErrors.admitDate = 'Admit date is required'
-    } else if (patientType && admitDate) {
-      const admit = new Date(admitDate)
-      const now = new Date()
-      const todayIso = now.toISOString().split('T')[0]
-      if (admitDate > todayIso) {
+    } else if (patientType && effectiveAdmitDate) {
+      const todayIso = new Date().toISOString().split('T')[0]
+      if (effectiveAdmitDate > todayIso) {
         newErrors.admitDate = 'Admit date cannot be in the future'
       }
     }
@@ -233,6 +243,27 @@ export function NewPatientSheet({ open, onOpenChange }: NewPatientSheetProps) {
         } catch (adtErr) {
           console.error('Failed to auto-create ADT event on registration:', adtErr)
         }
+
+        if (patientType === 'out-patient') {
+          try {
+            await updatePatient(hospitalId, newPatient.id, {
+              lastVisitDate: admitDate,
+              updatedAt: new Date().toISOString(),
+            })
+          } catch (updateErr) {
+            console.error('Failed to update out-patient lastVisitDate:', updateErr)
+          }
+        }
+      }
+
+      if (currentUser && userRole) {
+        await writeActivityLog({
+          hospitalId,
+          action: 'patient.create',
+          performedBy: buildPerformedBy(currentUser, userRole),
+          entity: { type: 'patient', id: newPatient.id, label: name.trim() },
+          summary: `Added patient ${name.trim()}`,
+        })
       }
 
       toast({

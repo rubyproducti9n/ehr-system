@@ -17,6 +17,7 @@ import {
   Send,
   FileCheck,
   Lock,
+  FileSearch,
 } from 'lucide-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useAppStore } from '@/store/useAppStore'
@@ -297,6 +298,7 @@ function AnalyseContent() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'x-user-email': currentUser.email,
+        'x-hospital-id': hospitalId ?? '',
       }
       if (userRole) {
         headers['x-user-role'] = userRole
@@ -458,7 +460,7 @@ function AnalyseContent() {
       setSavedPatientId(selectedPatientId)
       toast({
         title: 'Saved to patient record',
-        description: 'Document, clinical records, and audit log created',
+        description: 'Document, medical records, and audit log created',
       })
     } catch (err) {
       toast({
@@ -471,30 +473,50 @@ function AnalyseContent() {
     }
   }
 
-  if (!isFeatureVisible('ai_document_analysis') || !isFeatureEnabled('ai_document_analysis')) {
+  if (!isFeatureVisible('ai_document_analysis') || !isFeatureEnabled('ai_document_analysis') ||
+      !isFeatureVisible('gemini_online_extraction') || !isFeatureEnabled('gemini_online_extraction')) {
     return (
-      <div className="py-12">
-        <EmptyState
-          icon={Lock}
-          title="Feature Disabled"
-          description="AI document analysis has been disabled by your administrator."
-        />
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
+        <Lock className="h-10 w-10 text-muted-foreground" />
+        <div>
+          <p className="font-medium">Document analysis is not available</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            This feature is not enabled for your account. Please contact your hospital administrator.
+          </p>
+        </div>
       </div>
     )
   }
 
-  if (!isFeatureVisible('gemini_online_extraction') || !isFeatureEnabled('gemini_online_extraction')) {
+  // When Gemini is not configured (no API key):
+  if (!gemini.configured) {
     return (
-      <div className="py-12">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Cloud AI Analysis Disabled"
-          description="Cloud AI document extraction has been disabled by your administrator."
-          action={{
-            label: "Back to Patients",
-            href: "/patients"
-          }}
-        />
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
+        <FileSearch className="h-10 w-10 text-muted-foreground" />
+        <div>
+          <p className="font-medium text-foreground">Document analysis is not set up</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            This feature needs to be configured before use. Please contact your hospital administrator to get started.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // When Gemini is configured but status check fails:
+  if (gemini.status === 'offline') {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
+        <FileSearch className="h-10 w-10 text-muted-foreground" />
+        <div>
+          <p className="font-medium text-foreground">Document analysis is temporarily unavailable</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Please try again in a moment. If this continues, contact your administrator.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
       </div>
     )
   }
@@ -505,38 +527,15 @@ function AnalyseContent() {
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            AI Document Analysis
+            Document Analysis
           </h1>
-          <Badge className="border-blue-300 bg-blue-100 text-[10px] font-semibold text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-            ONLINE
-          </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Extract patient information, medications, and vitals from prescription images using cloud AI.
+          Extract patient information, medications, and vitals from prescription documents.
         </p>
       </div>
 
-      {/* Status Bar */}
-      <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between bg-card">
-        <ModelStatusBadge showGeminiStatus={true} hideLocalStatus={true} size="md" />
-
-        {!gemini.configured ? (
-          <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-            <span>
-              AI service not configured.{' '}
-              <Link href="/settings" className="underline hover:text-amber-900 font-semibold">
-                Go to Settings to configure API key
-              </Link>
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-            <span>AI Engine: Active</span>
-          </div>
-        )}
-      </div>
+      {/* Info Banner when loaded from patient documents */}
 
       {/* Info Banner when loaded from patient documents */}
       {loadedDocTitle && file && (
@@ -683,7 +682,7 @@ function AnalyseContent() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Click below to analyse the document image for clinical information extraction.
+                Click below to analyse the document image for structured information extraction.
               </p>
 
               <div className="space-y-2">
@@ -696,7 +695,7 @@ function AnalyseContent() {
                   {isExtracting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      {elapsedSeconds < 3 ? 'Sending to AI service...' : 'Waiting for response...'} (
+                      {elapsedSeconds < 3 ? 'Analysing document...' : 'Processing...'} (
                       {formatElapsed(elapsedSeconds)})
                     </>
                   ) : (
@@ -709,7 +708,7 @@ function AnalyseContent() {
 
                 {!gemini.configured && (
                   <p className="text-xs text-amber-600 font-medium text-center">
-                    API key required — configure in Settings
+                    Service not configured — contact your administrator
                   </p>
                 )}
               </div>
@@ -790,7 +789,7 @@ function AnalyseContent() {
                       Analysis saved successfully!
                     </div>
                     <p className="text-emerald-800 dark:text-emerald-300">
-                      Document, prescriptions, clinical encounters, and audit log have been recorded.
+                      Document, prescriptions, patient encounters, and audit log have been recorded.
                     </p>
                     {savedPatientId && (
                       <Link
