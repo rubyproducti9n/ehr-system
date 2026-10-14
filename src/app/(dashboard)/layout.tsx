@@ -15,6 +15,7 @@ import { ref, get } from "firebase/database"
 import { db, auth } from "@/lib/firebase"
 import { signOut } from "firebase/auth"
 import { Loader2 } from "lucide-react"
+import { migrateUserStructureIfNeeded } from "@/lib/services/authService"
 
 export default function DashboardLayout({
   children,
@@ -35,40 +36,72 @@ export default function DashboardLayout({
   const setHospitalCode = useAppStore((state) => state.setHospitalCode)
   const setHospitalName = useAppStore((state) => state.setHospitalName)
   const setUserRole = useAppStore((state) => state.setUserRole)
+  const setAvailableHospitals = useAppStore((state) => state.setAvailableHospitals)
+  const isHospitalSwitching = useAppStore((state) => state.isHospitalSwitching)
 
   const hospitalName = useAppStore((state) => state.hospitalName)
 
   useEffect(() => {
-    const unsubscribe = subscribeToFlags((flags) => {
-      setFeatureFlags(flags)
+    if (!hospitalId) return
+
+    const unsub = subscribeToFlags((flags) => {
+      const flagMap: Record<string, any> = {}
+      for (const flag of flags) flagMap[flag.key] = flag
+      setFeatureFlags(flagMap)
     })
-    return () => unsubscribe()
-  }, [setFeatureFlags])
+
+    return () => unsub()
+  }, [hospitalId, setFeatureFlags])
 
   useEffect(() => {
     if (currentUser) {
       const rehydrateSession = async () => {
         try {
-          let currentHospId = hospitalId
-          if (!currentHospId) {
+          if (!hospitalId) {
             setIsRehydrating(true)
-            const snap = await get(ref(db, `users/${currentUser.uid}`))
-            if (!snap.exists()) {
-              await signOut(auth)
-              return
-            }
-            const userData = snap.val()
-            currentHospId = userData.hospitalId
-            setHospitalId(userData.hospitalId)
-            setHospitalCode(userData.hospitalCode)
-            setUserRole(userData.role)
+          }
+          const snap = await get(ref(db, `users/${currentUser.uid}`))
+          if (!snap.exists()) {
+            await signOut(auth)
+            return
+          }
+          const userData = snap.val()
+
+          // Run migration if user has old structure
+          if (!userData.activeHospitalId && userData.hospitalId) {
+            await migrateUserStructureIfNeeded(currentUser.uid, userData)
+            // Re-read after migration
+            const migrated = await get(ref(db, `users/${currentUser.uid}`))
+            Object.assign(userData, migrated.val())
           }
 
-          if (currentHospId && !hospitalName) {
-            const profileSnap = await get(ref(db, `hospitals/${currentHospId}/profile/name`))
-            if (profileSnap.exists()) {
-              setHospitalName(profileSnap.val())
-            }
+          const activeHospitalId = userData.activeHospitalId
+          if (!activeHospitalId) {
+            await signOut(auth)
+            return
+          }
+
+          const hospitalEntry = userData.hospitals?.[activeHospitalId]
+          const role = hospitalEntry?.role ?? userData.role ?? 'doctor'
+
+          setHospitalId(activeHospitalId)
+          setHospitalCode(userData.activeHospitalCode ?? '')
+          setUserRole(role)
+
+          // Build available hospitals list
+          const availableHospitals = Object.entries(userData.hospitals ?? {}).map(
+            ([hid, hdata]: [string, any]) => ({
+              hospitalId: hid,
+              hospitalCode: hdata.hospitalCode ?? '',
+              role: hdata.role ?? 'doctor',
+            })
+          )
+          setAvailableHospitals(availableHospitals)
+
+          // Fetch hospital name
+          const profileSnap = await get(ref(db, `hospitals/${activeHospitalId}/profile/name`))
+          if (profileSnap.exists()) {
+            setHospitalName(profileSnap.val())
           }
         } catch (err) {
           console.error("Failed to rehydrate session:", err)
@@ -78,7 +111,7 @@ export default function DashboardLayout({
       }
       rehydrateSession()
     }
-  }, [currentUser, hospitalId, hospitalName, setHospitalId, setHospitalCode, setUserRole, setHospitalName])
+  }, [currentUser?.uid, hospitalId, setHospitalId, setHospitalCode, setUserRole, setAvailableHospitals, setHospitalName])
 
   useEffect(() => {
     if (!hospitalId) return
@@ -128,7 +161,16 @@ export default function DashboardLayout({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background relative">
+        {isHospitalSwitching && (
+          <div className="fixed inset-0 bg-background/60 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-card px-4 py-3 rounded-lg shadow-lg border">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              Switching hospital...
+            </div>
+          </div>
+        )}
+
         {/* Responsive Sidebar (desktop fixed 240px or 64px, mobile Sheet) */}
         <Sidebar
           mobileOpen={mobileOpen}

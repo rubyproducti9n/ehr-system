@@ -25,6 +25,7 @@ export default function LoginPage() {
   const setHospitalCode = useAppStore((state) => state.setHospitalCode)
   const setHospitalName = useAppStore((state) => state.setHospitalName)
   const setUserRole = useAppStore((state) => state.setUserRole)
+  const setAvailableHospitals = useAppStore((state) => state.setAvailableHospitals)
 
   const [hospitalCode, setHospitalCodeInput] = useState('')
   const [email, setEmail] = useState('')
@@ -75,6 +76,7 @@ export default function LoginPage() {
       setHospitalId(result.hospitalId)
       setHospitalCode(result.hospitalCode)
       setUserRole(result.role)
+      setAvailableHospitals(result.availableHospitals)
 
       const profileSnap = await get(ref(db, `hospitals/${result.hospitalId}/profile/name`))
       if (profileSnap.exists()) {

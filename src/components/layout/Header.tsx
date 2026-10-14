@@ -34,6 +34,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/console": "Developer Console",
   "/console/flags": "Feature Flags",
   "/console/db": "Database Explorer",
+  "/hospitals/new": "Add Hospital",
 }
 
 const ROLE_LABELS: Record<string, string> = {

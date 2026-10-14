@@ -35,6 +35,8 @@ import {
   getProviders,
   createProvider,
   updateProvider,
+  checkProviderEmailAvailable,
+  registerProviderEmail,
 } from '@/lib/services/providerService'
 import { addDrPrefix, validatePhone, validateEmail } from '@/lib/utils'
 import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
@@ -77,6 +79,11 @@ interface ResolvedWriteAction {
   rawItem: ParsedProvider
 }
 
+interface FailedProvider {
+  provider: ParsedProvider
+  failReason: string
+}
+
 export function ImportCompletionFlow({
   open,
   onOpenChange,
@@ -115,7 +122,7 @@ export function ImportCompletionFlow({
   const [totalToWrite, setTotalToWrite] = useState(0)
   const [currentWritingName, setCurrentWritingName] = useState('')
   const [importedCount, setImportedCount] = useState(0)
-  const [failedList, setFailedList] = useState<ParsedProvider[]>([])
+  const [failedList, setFailedList] = useState<FailedProvider[]>([])
 
   // Initialize on open
   useEffect(() => {
@@ -417,12 +424,31 @@ export function ImportCompletionFlow({
 
     setTotalToWrite(resolvedActions.length)
     let successful = 0
-    const failures: ParsedProvider[] = []
+    const failures: FailedProvider[] = []
 
     for (let i = 0; i < resolvedActions.length; i++) {
       const item = resolvedActions[i]
       setWritingIndex(i + 1)
       setCurrentWritingName(item.providerData.name)
+
+      // Before creating provider, check cross-hospital email uniqueness
+      if (item.providerData.email) {
+        try {
+          const emailCheck = await checkProviderEmailAvailable(
+            item.providerData.email,
+            hospitalId
+          )
+          if (!emailCheck.available) {
+            failures.push({
+              provider: item.rawItem,
+              failReason: 'This email is already registered under another hospital and cannot be added here.',
+            })
+            continue
+          }
+        } catch (checkErr) {
+          console.error('Error checking email availability:', checkErr)
+        }
+      }
 
       try {
         if (item.action === 'update' && item.existingId) {
@@ -430,11 +456,28 @@ export function ImportCompletionFlow({
         } else {
           await createProvider(hospitalId, item.providerData)
         }
+
+        // Register email in global lookup
+        if (item.providerData.email) {
+          try {
+            await registerProviderEmail(
+              item.providerData.email,
+              hospitalId,
+              item.providerData.name
+            )
+          } catch (regErr) {
+            console.error('Failed to register provider email:', regErr)
+          }
+        }
+
         successful++
         setImportedCount(successful)
       } catch (err) {
         console.error(`Failed to write provider ${item.providerData.name}:`, err)
-        failures.push(item.rawItem)
+        failures.push({
+          provider: item.rawItem,
+          failReason: 'Failed to write record to database.',
+        })
       }
 
       // Small delay for smooth progress UI
@@ -955,32 +998,61 @@ export function ImportCompletionFlow({
             </div>
 
             {/* Failure List & Download Option */}
-            {failedList.length > 0 && (
-              <div className="p-4 rounded-lg border border-destructive/20 bg-destructive/10 text-left space-y-2 max-w-md mx-auto">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-destructive">
-                    {failedList.length} Failed Row(s)
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => exportFailedRowsAsCsv(failedList)}
-                    className="h-7 text-xs gap-1.5 border-destructive/30 text-destructive bg-background hover:bg-destructive/10"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download CSV
-                  </Button>
-                </div>
-                <div className="max-h-24 overflow-y-auto divide-y divide-destructive/20 text-xs text-muted-foreground">
-                  {failedList.map((f, idx) => (
-                    <div key={idx} className="py-1 flex justify-between">
-                      <span>{f.mapped.name || 'Unnamed'}</span>
-                      <span className="font-mono text-[11px]">{f.mapped.email}</span>
+            {(() => {
+              const emailConflicts = failedList.filter((f) => f.failReason.includes('another hospital'))
+              const writeFailures = failedList.filter((f) => !f.failReason.includes('another hospital'))
+
+              if (failedList.length === 0) return null
+
+              return (
+                <div className="space-y-3 max-w-md mx-auto text-left">
+                  {emailConflicts.length > 0 && (
+                    <div className="text-sm text-amber-700 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded p-3">
+                      <p className="font-medium">
+                        {emailConflicts.length} provider{emailConflicts.length !== 1 ? 's' : ''} not imported
+                      </p>
+                      <p className="text-xs mt-0.5">
+                        These email addresses are already associated with providers at another hospital and cannot be duplicated.
+                      </p>
+                      <ul className="mt-2 space-y-0.5 max-h-28 overflow-y-auto">
+                        {emailConflicts.map((f, i) => (
+                          <li key={i} className="text-xs">
+                            • {f.provider.mapped.name || 'Unnamed'} ({f.provider.mapped.email})
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  ))}
+                  )}
+
+                  {writeFailures.length > 0 && (
+                    <div className="p-4 rounded-lg border border-destructive/20 bg-destructive/10 text-left space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-destructive">
+                          {writeFailures.length} Failed Row(s)
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => exportFailedRowsAsCsv(writeFailures.map((f) => f.provider))}
+                          className="h-7 text-xs gap-1.5 border-destructive/30 text-destructive bg-background hover:bg-destructive/10"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download CSV
+                        </Button>
+                      </div>
+                      <div className="max-h-24 overflow-y-auto divide-y divide-destructive/20 text-xs text-muted-foreground">
+                        {writeFailures.map((f, idx) => (
+                          <div key={idx} className="py-1 flex justify-between">
+                            <span>{f.provider.mapped.name || 'Unnamed'}</span>
+                            <span className="font-mono text-[11px]">{f.provider.mapped.email}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             <div className="pt-2 flex justify-center">
               <Button

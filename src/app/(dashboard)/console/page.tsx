@@ -18,13 +18,13 @@ import {
 } from 'lucide-react'
 import { useAllHospitals } from '@/hooks/useAllHospitals'
 import { useAllAuditLogs } from '@/hooks/useAllAuditLogs'
-import { formatDate } from '@/lib/utils'
+import { formatDate, encodeEmailForFirebase } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { db } from '@/lib/firebase'
-import { ref, get } from 'firebase/database'
+import { ref, get, set } from 'firebase/database'
 import { exportAllSystemDataToPdf } from '@/lib/pdfExport'
 
 interface StatCardProps {
@@ -62,6 +62,7 @@ function ConsoleStatCard({ label, value, loading, icon: Icon, colorClass = 'text
 export default function ConsolePage() {
   const { toast } = useToast()
   const [exporting, setExporting] = useState(false)
+  const [backfillLoading, setBackfillLoading] = useState(false)
 
   const {
     hospitals,
@@ -73,6 +74,51 @@ export default function ConsolePage() {
   } = useAllHospitals()
 
   const { logs, loading: logsLoading } = useAllAuditLogs()
+
+  const handleBackfillProviderEmails = async () => {
+    setBackfillLoading(true)
+    let count = 0
+    let skipped = 0
+
+    try {
+      for (const hospital of hospitals) {
+        const providersSnap = await get(ref(db, `hospitals/${hospital.hospitalId}/providers`))
+        if (!providersSnap.exists()) continue
+
+        const providers = Object.values(providersSnap.val()) as any[]
+        for (const provider of providers) {
+          if (!provider.email) continue
+          const encoded = encodeEmailForFirebase(provider.email)
+          const existing = await get(ref(db, `providerEmails/${encoded}`))
+          if (existing.exists()) {
+            skipped++
+            continue
+          }
+
+          await set(ref(db, `providerEmails/${encoded}`), {
+            hospitalId: hospital.hospitalId,
+            providerName: provider.name ?? '',
+            addedAt: new Date().toISOString(),
+          })
+          count++
+        }
+      }
+
+      toast({
+        title: 'Backfill complete',
+        description: `Registered ${count} provider emails. ${skipped} already existed.`,
+      })
+    } catch (err: any) {
+      console.error('Failed to backfill provider emails:', err)
+      toast({
+        title: 'Backfill error',
+        description: err.message || 'Failed to complete backfill.',
+        variant: 'destructive',
+      })
+    } finally {
+      setBackfillLoading(false)
+    }
+  }
 
   const handleExportAllPdf = async () => {
     setExporting(true)
@@ -427,6 +473,24 @@ export default function ConsolePage() {
             <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
           </Link>
         </div>
+      </div>
+
+      {/* Utilities Section */}
+      <div className="mt-6 border border-slate-200/80 bg-white rounded-xl p-4">
+        <p className="text-xs text-slate-500 font-mono mb-2">// UTILITIES</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="font-mono text-xs gap-2"
+          onClick={handleBackfillProviderEmails}
+          disabled={backfillLoading}
+        >
+          {backfillLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Backfill provider email registry
+        </Button>
+        <p className="text-xs text-slate-500 mt-1">
+          Run once after deploying provider email uniqueness. Registers all existing providers.
+        </p>
       </div>
     </div>
   )

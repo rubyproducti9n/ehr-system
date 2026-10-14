@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip } from "@/components/ui/tooltip"
+import { HospitalSwitcher } from "@/components/layout/HospitalSwitcher"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
@@ -97,11 +98,8 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
             <div className="flex items-center gap-2.5 min-w-0">
               <Activity className="h-5 w-5 text-primary shrink-0" />
               <div className="min-w-0 flex-1">
-                <span
-                  className="text-sm font-bold text-foreground truncate block leading-tight font-lato tracking-tight"
-                  title={hospitalName || 'Hospital'}
-                >
-                  {hospitalName || 'Hospital'}
+                <span className="text-sm font-bold text-foreground truncate block leading-tight font-lato tracking-tight">
+                  EHR Platform
                 </span>
                 <span className="text-[10px] text-muted-foreground truncate block leading-tight font-medium mt-0.5">
                   Powered by MyAarogyam
@@ -109,6 +107,11 @@ export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps
               </div>
             </div>
           )}
+        </div>
+
+        {/* Hospital switcher — below app name */}
+        <div className={cn("border-b border-border", collapsed ? "pb-2" : "pb-1")}>
+          <HospitalSwitcher collapsed={collapsed} />
         </div>
 
         {/* Navigation Links */}

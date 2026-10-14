@@ -147,3 +147,17 @@ export function shouldUseBackendSearch(
   return false
 }
 
+export function encodeEmailForFirebase(email: string): string {
+  return email
+    .toLowerCase()
+    .trim()
+    .replace(/\./g, '_DOT_')
+    .replace(/@/g, '_AT_')
+}
+
+export function decodeFirebaseEmail(encoded: string): string {
+  return encoded
+    .replace(/_AT_/g, '@')
+    .replace(/_DOT_/g, '.')
+}
+

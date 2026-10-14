@@ -5,7 +5,7 @@ import { Plus, Edit2, Trash2, Stethoscope, Upload, ShieldAlert, Download } from 
 import { Provider } from '@/types'
 import { useProviders } from '@/hooks/useProviders'
 import { useFacilities } from '@/hooks/useFacilities'
-import { deleteProvider } from '@/lib/services/providerService'
+import { deleteProvider, unregisterProviderEmail } from '@/lib/services/providerService'
 import { writeActivityLog, buildPerformedBy } from '@/lib/services/activityLogService'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
@@ -160,6 +160,14 @@ export default function ProvidersPage() {
     setDeleting(true)
     try {
       await deleteProvider(hospitalId, providerToDelete.id)
+
+      if (providerToDelete.email) {
+        try {
+          await unregisterProviderEmail(providerToDelete.email)
+        } catch (unregErr) {
+          console.error('Failed to unregister provider email:', unregErr)
+        }
+      }
 
       if (currentUser && userRole) {
         await writeActivityLog({

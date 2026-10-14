@@ -10,6 +10,7 @@ import {
 } from 'firebase/database'
 import { db } from '@/lib/firebase'
 import { Provider } from '@/types'
+import { encodeEmailForFirebase } from '@/lib/utils'
 
 // Realtime listener — returns unsubscribe function
 export function subscribeToProviders(
@@ -84,4 +85,44 @@ export async function updateProvider(
 export async function deleteProvider(hospitalId: string, id: string): Promise<void> {
   const providerRef = ref(db, `hospitals/${hospitalId}/providers/${id}`)
   await remove(providerRef)
+}
+
+// Check if email is already registered under a different hospital
+export async function checkProviderEmailAvailable(
+  email: string,
+  currentHospitalId: string
+): Promise<{ available: boolean; conflictingHospitalId?: string }> {
+  const encoded = encodeEmailForFirebase(email)
+  const snap = await get(ref(db, `providerEmails/${encoded}`))
+
+  if (!snap.exists()) return { available: true }
+
+  const data = snap.val()
+  const existingHospitalId = data.hospitalId
+
+  // Same hospital — not a cross-hospital conflict (handled by existing dupe check)
+  if (existingHospitalId === currentHospitalId) return { available: true }
+
+  // Different hospital — conflict
+  return { available: false, conflictingHospitalId: existingHospitalId }
+}
+
+// Register email in global lookup — call after provider is successfully created
+export async function registerProviderEmail(
+  email: string,
+  hospitalId: string,
+  providerName: string
+): Promise<void> {
+  const encoded = encodeEmailForFirebase(email)
+  await set(ref(db, `providerEmails/${encoded}`), {
+    hospitalId,
+    providerName,
+    addedAt: new Date().toISOString(),
+  })
+}
+
+// Remove email from global lookup — call after provider is deleted
+export async function unregisterProviderEmail(email: string): Promise<void> {
+  const encoded = encodeEmailForFirebase(email)
+  await remove(ref(db, `providerEmails/${encoded}`))
 }

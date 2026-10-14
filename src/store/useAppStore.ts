@@ -32,6 +32,10 @@ interface AppStore {
   setTranscriptionUrl: (url: string | null) => void
   transcriptionServerStatus: 'checking' | 'online' | 'offline'
   setTranscriptionServerStatus: (status: 'checking' | 'online' | 'offline') => void
+  availableHospitals: { hospitalId: string; hospitalCode: string; role: string }[]
+  setAvailableHospitals: (hospitals: { hospitalId: string; hospitalCode: string; role: string }[]) => void
+  isHospitalSwitching: boolean
+  setIsHospitalSwitching: (switching: boolean) => void
   clearSession: () => void
 }
 
@@ -60,6 +64,10 @@ export const useAppStore = create<AppStore>()(
       setTranscriptionUrl: (url) => set({ transcriptionUrl: url }),
       transcriptionServerStatus: 'checking',
       setTranscriptionServerStatus: (status) => set({ transcriptionServerStatus: status }),
+      availableHospitals: [],
+      setAvailableHospitals: (hospitals) => set({ availableHospitals: hospitals }),
+      isHospitalSwitching: false,
+      setIsHospitalSwitching: (switching) => set({ isHospitalSwitching: switching }),
       featureFlags: null,
       setFeatureFlags: (flags) => {
         if (Array.isArray(flags)) {
@@ -99,6 +107,8 @@ export const useAppStore = create<AppStore>()(
           backendUrl: null,
           transcriptionUrl: null,
           featureFlags: null,
+          availableHospitals: [],
+          isHospitalSwitching: false,
         }),
     }),
     {

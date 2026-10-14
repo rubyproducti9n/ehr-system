@@ -7,6 +7,41 @@ import {
 import { ref, set, get, update } from 'firebase/database'
 import { generateUniqueCode } from '@/lib/hospitalCode'
 
+const log = { info: (msg: string) => console.log(`[authService] ${msg}`) }
+
+export async function migrateUserStructureIfNeeded(
+  uid: string,
+  userData: any
+): Promise<void> {
+  // If already migrated — activeHospitalId exists — skip
+  if (userData.activeHospitalId) return
+
+  // Old structure detected — migrate
+  const hospitalId = userData.hospitalId
+  const hospitalCode = userData.hospitalCode ?? ''
+  const role = userData.role ?? 'doctor'
+  const joinedAt = userData.joinedAt ?? new Date().toISOString()
+
+  if (!hospitalId) return
+
+  await update(ref(db, `users/${uid}`), {
+    activeHospitalId: hospitalId,
+    activeHospitalCode: hospitalCode,
+    [`hospitals/${hospitalId}/role`]: role,
+    [`hospitals/${hospitalId}/hospitalCode`]: hospitalCode,
+    [`hospitals/${hospitalId}/joinedAt`]: joinedAt,
+  })
+
+  // Remove old fields — set to null deletes in Firebase Realtime Database
+  await update(ref(db, `users/${uid}`), {
+    hospitalId: null,
+    hospitalCode: null,
+    role: null,
+  })
+
+  log.info(`Migrated user ${uid} to multi-hospital structure`)
+}
+
 export async function registerHospital(data: {
   hospitalName: string
   address: string
@@ -55,12 +90,14 @@ export async function registerHospital(data: {
     })
 
     await update(ref(db, `users/${uid}`), {
-      hospitalId,
-      hospitalCode,
-      role: 'super_admin',
+      activeHospitalId: hospitalId,
+      activeHospitalCode: hospitalCode,
       email: data.adminEmail,
       displayName: data.adminName,
       isActive: true,
+      [`hospitals/${hospitalId}/role`]: 'super_admin',
+      [`hospitals/${hospitalId}/hospitalCode`]: hospitalCode,
+      [`hospitals/${hospitalId}/joinedAt`]: now,
     })
 
     await set(ref(db, `hospitalCodes/${hospitalCode}`), hospitalId)
@@ -101,14 +138,16 @@ export async function registerStaff(data: {
   const now = new Date().toISOString()
 
   try {
-    // 1. Write users/${uid} first so root.child('users').child(auth.uid).child('hospitalId') exists for hospital permission checks
+    // 1. Write users/${uid} first with hospitals map for permission checks
     await update(ref(db, `users/${uid}`), {
-      hospitalId,
-      hospitalCode: code,
-      role: data.role,
+      activeHospitalId: hospitalId,
+      activeHospitalCode: data.hospitalCode.toUpperCase().trim(),
       email: data.email,
       displayName: data.fullName,
       isActive: true,
+      [`hospitals/${hospitalId}/role`]: data.role,
+      [`hospitals/${hospitalId}/hospitalCode`]: data.hospitalCode.toUpperCase().trim(),
+      [`hospitals/${hospitalId}/joinedAt`]: now,
     })
 
     // 2. Write hospitals/${hospitalId}/staff/${uid}
@@ -144,6 +183,7 @@ export async function loginUser(data: {
   hospitalCode: string
   role: import('@/types').AppUser['role']
   displayName: string
+  availableHospitals: { hospitalId: string; hospitalCode: string; role: string }[]
   isFirstTimeImportedProvider?: boolean
 }> {
   const code = data.hospitalCode.toUpperCase().trim()
@@ -206,12 +246,14 @@ export async function loginUser(data: {
 
       // Write users node and staff node
       await update(ref(db, `users/${uid}`), {
-        hospitalId,
-        hospitalCode: code,
-        role: 'doctor',
+        activeHospitalId: hospitalId,
+        activeHospitalCode: code,
         email: data.email,
         displayName: providerDisplayName,
         isActive: true,
+        [`hospitals/${hospitalId}/role`]: 'doctor',
+        [`hospitals/${hospitalId}/hospitalCode`]: code,
+        [`hospitals/${hospitalId}/joinedAt`]: now,
       })
 
       await update(ref(db, `hospitals/${hospitalId}/staff/${uid}`), {
@@ -244,23 +286,68 @@ export async function loginUser(data: {
   }
   const userData = userSnap.val()
 
-  if (userData.hospitalId !== hospitalId) {
+  // Migrate old structure if needed
+  await migrateUserStructureIfNeeded(uid, userData)
+
+  // Re-read after migration in case structure changed
+  const freshSnap = await get(ref(db, `users/${uid}`))
+  const freshData = freshSnap.val()
+
+  let activeHospitalId = freshData.activeHospitalId
+  if (!activeHospitalId) {
+    await signOut(auth)
+    throw new Error('Account configuration error. Contact your administrator.')
+  }
+
+  // Verify user belongs to the hospital from the code they entered
+  const hospitalEntry = freshData.hospitals?.[hospitalId]
+  if (!hospitalEntry) {
     await signOut(auth)
     throw new Error('This account does not belong to this hospital.')
   }
 
-  if (userData.isActive === false) {
+  // Check active status
+  if (freshData.isActive === false) {
     await signOut(auth)
     throw new Error('Your account has been deactivated. Contact your hospital administrator.')
   }
 
+  // If user entered code for one of their other hospitals, switch activeHospitalId to it
+  if (activeHospitalId !== hospitalId) {
+    await update(ref(db, `users/${uid}`), {
+      activeHospitalId: hospitalId,
+      activeHospitalCode: code,
+    })
+    activeHospitalId = hospitalId
+  }
+
+  const role = hospitalEntry.role
+
   return {
-    hospitalId,
+    hospitalId: activeHospitalId,
     hospitalCode: code,
-    role: userData.role,
-    displayName: userData.displayName || data.email.split('@')[0],
+    role,
+    displayName: freshData.displayName || data.email.split('@')[0],
+    availableHospitals: Object.entries(freshData.hospitals ?? {}).map(
+      ([hid, hdata]: [string, any]) => ({
+        hospitalId: hid,
+        hospitalCode: hdata.hospitalCode ?? '',
+        role: hdata.role ?? 'doctor',
+      })
+    ),
     isFirstTimeImportedProvider,
   }
+}
+
+export async function switchHospital(
+  uid: string,
+  hospitalId: string,
+  hospitalCode: string
+): Promise<void> {
+  await update(ref(db, `users/${uid}`), {
+    activeHospitalId: hospitalId,
+    activeHospitalCode: hospitalCode,
+  })
 }
 
 export async function logoutUser(): Promise<void> {
@@ -288,7 +375,9 @@ export async function updateStaffRole(
     throw new Error('Cannot assign super_admin role after registration')
   }
   await update(ref(db, `hospitals/${hospitalId}/staff/${userId}`), { role })
-  await update(ref(db, `users/${userId}`), { role })
+  await update(ref(db, `users/${userId}`), {
+    [`hospitals/${hospitalId}/role`]: role,
+  })
 }
 
 export async function deactivateStaffMember(hospitalId: string, userId: string): Promise<void> {

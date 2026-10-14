@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { Provider } from '@/types'
-import { createProvider, updateProvider } from '@/lib/services/providerService'
+import {
+  createProvider,
+  updateProvider,
+  checkProviderEmailAvailable,
+  registerProviderEmail,
+  unregisterProviderEmail,
+} from '@/lib/services/providerService'
+import { Loader2 } from 'lucide-react'
 import { useFacilities } from '@/hooks/useFacilities'
 import { useAppStore } from '@/store/useAppStore'
 import { useToast } from '@/hooks/use-toast'
@@ -51,6 +58,8 @@ export function ProviderDialog({
     facilityId?: string
   }>({})
   const [submitting, setSubmitting] = useState(false)
+  const [emailConflict, setEmailConflict] = useState(false)
+  const [checkingEmail, setCheckingEmail] = useState(false)
 
   useEffect(() => {
     if (provider) {
@@ -67,7 +76,32 @@ export function ProviderDialog({
       setFacilityId('')
     }
     setErrors({})
+    setEmailConflict(false)
+    setCheckingEmail(false)
   }, [provider, open])
+
+  const handleEmailBlur = async (emailVal: string) => {
+    const trimmed = emailVal.trim()
+    if (!trimmed || validateEmail(trimmed) || !hospitalId) {
+      if (!trimmed) setEmailConflict(false)
+      return
+    }
+
+    if (isEdit && provider && provider.email?.toLowerCase().trim() === trimmed.toLowerCase()) {
+      setEmailConflict(false)
+      return
+    }
+
+    setCheckingEmail(true)
+    try {
+      const result = await checkProviderEmailAvailable(trimmed, hospitalId)
+      setEmailConflict(!result.available)
+    } catch {
+      setEmailConflict(false)
+    } finally {
+      setCheckingEmail(false)
+    }
+  }
 
   // Auto-select single facility if only one exists
   useEffect(() => {
@@ -119,7 +153,7 @@ export function ProviderDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || !hospitalId) return
+    if (!validate() || !hospitalId || emailConflict || checkingEmail) return
 
     const formattedName = addDrPrefix(name)
     setName(formattedName)
@@ -127,6 +161,7 @@ export function ProviderDialog({
     setSubmitting(true)
     try {
       if (isEdit && provider) {
+        const originalEmail = provider.email
         await updateProvider(hospitalId, provider.id, {
           name: formattedName,
           specialty: specialty.trim(),
@@ -134,6 +169,16 @@ export function ProviderDialog({
           email: email.trim(),
           facilityId,
         })
+
+        // If email changed — unregister old, register new
+        if (originalEmail && originalEmail.toLowerCase().trim() !== email.toLowerCase().trim()) {
+          try {
+            await unregisterProviderEmail(originalEmail)
+            await registerProviderEmail(email.trim(), hospitalId, formattedName)
+          } catch (regErr) {
+            console.error('Failed to update provider email registry:', regErr)
+          }
+        }
 
         if (currentUser && userRole) {
           await writeActivityLog({
@@ -157,6 +202,12 @@ export function ProviderDialog({
           email: email.trim(),
           facilityId,
         })
+
+        try {
+          await registerProviderEmail(email.trim(), hospitalId, formattedName)
+        } catch (regErr) {
+          console.error('Failed to register provider email in registry:', regErr)
+        }
 
         if (currentUser && userRole) {
           await writeActivityLog({
@@ -242,11 +293,25 @@ export function ProviderDialog({
                 id='provider-email'
                 type='email'
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (!e.target.value.trim()) setEmailConflict(false)
+                }}
+                onBlur={(e) => handleEmailBlur(e.target.value)}
                 placeholder='sjenkins@clinic.org'
                 disabled={submitting}
               />
-              {errors.email && (
+              {checkingEmail && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Checking availability...
+                </p>
+              )}
+              {emailConflict && !checkingEmail && (
+                <p className="text-xs text-red-600">
+                  This email is already registered as a provider at another hospital.
+                </p>
+              )}
+              {errors.email && !emailConflict && !checkingEmail && (
                 <p className='text-xs text-destructive'>{errors.email}</p>
               )}
             </div>
@@ -288,12 +353,20 @@ export function ProviderDialog({
             >
               Cancel
             </Button>
-            <Button type='submit' disabled={submitting}>
-              {submitting
-                ? 'Saving...'
-                : isEdit
-                ? 'Save Changes'
-                : 'Add Provider'}
+            <Button
+              type='submit'
+              disabled={submitting || emailConflict || checkingEmail}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : isEdit ? (
+                'Save Changes'
+              ) : (
+                'Add Provider'
+              )}
             </Button>
           </DialogFooter>
         </form>
